@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { IBApi, EventName } from '@stoqey/ib';
 
 interface IBKRConnectionRequest {
   host: string;
@@ -9,6 +8,25 @@ interface IBKRConnectionRequest {
 
 export async function POST(request: NextRequest) {
   try {
+    let IBApi: any;
+    let EventName: any;
+    try {
+      // Dynamically require the IBKR library if available
+      const ibModule = eval("require('@stoqey/ib')");
+      IBApi = ibModule.IBApi;
+      EventName = ibModule.EventName;
+    } catch (err) {
+      console.warn('IBKR library not found, falling back to virtual trading');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'IBKR module not available',
+          fallbackMode: 'virtual',
+        },
+        { status: 503 }
+      );
+    }
+
     const { host, port, clientId }: IBKRConnectionRequest = await request.json();
 
     return await new Promise<NextResponse>((resolve) => {

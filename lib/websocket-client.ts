@@ -91,9 +91,12 @@ export class UnusualWhalesWebSocket {
       }
 
       // Connect to WebSocket endpoint
-      const wsUrl = 'wss://api.unusualwhales.com/ws';
+      const apiKey = process.env.NEXT_PUBLIC_UNUSUAL_WHALES_API_KEY;
+      const wsUrl = apiKey
+        ? `wss://api.unusualwhales.com/ws?api_key=${apiKey}`
+        : 'wss://api.unusualwhales.com/ws';
       console.log('Attempting WebSocket connection to:', wsUrl);
-      
+
       this.ws = new WebSocket(wsUrl);
 
       return new Promise((resolve) => {
