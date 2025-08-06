@@ -17,7 +17,8 @@ export async function GET(request: NextRequest) {
     let data;
     switch (type) {
       case 'options':
-        data = await unusualWhalesAPI.getStockOptionsData(ticker);
+        // Use flow alerts instead of non-existent options endpoint
+        data = await unusualWhalesAPI.getStockFlowAlerts(ticker, true, true, 50);
         break;
       case 'greeks':
         data = await unusualWhalesAPI.getStockGreeks(ticker);
@@ -31,6 +32,15 @@ export async function GET(request: NextRequest) {
       case 'net-prem-ticks':
         const date = searchParams.get('date');
         data = await unusualWhalesAPI.getStockNetPremTicks(ticker, date || undefined);
+        break;
+      case 'flow-alerts':
+        data = await unusualWhalesAPI.getStockFlowAlerts(ticker, true, true, 50);
+        break;
+      case 'max-pain':
+        data = await unusualWhalesAPI.getStockMaxPain(ticker);
+        break;
+      case 'gex':
+        data = await unusualWhalesAPI.getStockGEX(ticker);
         break;
       default:
         return NextResponse.json({ error: 'Invalid type parameter' }, { status: 400 });

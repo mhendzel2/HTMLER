@@ -11,16 +11,25 @@ import { Activity, TrendingUp, AlertTriangle, Eye, Filter } from 'lucide-react';
 
 interface OptionsActivity {
   ticker: string;
-  contract_id: string;
-  option_type: 'CALL' | 'PUT';
-  strike: number;
+  option_symbol?: string;
+  underlying_symbol?: string;
+  option_type: 'CALL' | 'PUT' | 'call' | 'put';
+  strike: number | string;
   expiry: string;
   volume: number;
-  open_interest: number;
-  premium: number;
-  implied_volatility: number;
-  unusual_activity: boolean;
-  timestamp: string;
+  open_interest?: number;
+  premium: number | string;
+  price?: number | string;
+  implied_volatility?: number | string;
+  unusual_activity?: boolean;
+  timestamp?: string;
+  executed_at?: number;
+  size?: number;
+  tags?: string[];
+  delta?: number | string;
+  theta?: number | string;
+  gamma?: number | string;
+  vega?: number | string;
 }
 
 export default function OptionsPage() {
@@ -32,14 +41,37 @@ export default function OptionsPage() {
   const fetchOptionsData = async () => {
     setRefreshing(true);
     try {
-      // Fetch real options data for popular tickers since API requires ticker parameter
+      // Fetch flow alerts data for popular tickers since API requires ticker parameter
       const tickers = ['AAPL', 'TSLA', 'NVDA', 'MSFT', 'SPY'];
       const optionsPromises = tickers.map(async (ticker) => {
         try {
-          const response = await fetch(`/api/options?ticker=${ticker}&type=options`);
+          const response = await fetch(`/api/options?ticker=${ticker}&type=flow-alerts`);
           if (response.ok) {
             const data = await response.json();
-            return data.data || [];
+            // Transform flow alerts data to match our interface
+            const flowAlerts = data.data?.data || data.data || [];
+            return flowAlerts.map((alert: any) => ({
+              ticker: alert.underlying_symbol || ticker,
+              option_symbol: alert.option_symbol,
+              underlying_symbol: alert.underlying_symbol || ticker,
+              option_type: (alert.option_type || 'call').toUpperCase() as 'CALL' | 'PUT',
+              strike: parseFloat(alert.strike || '0'),
+              expiry: alert.expiry || '',
+              volume: alert.size || alert.volume || 0,
+              open_interest: alert.open_interest || 0,
+              premium: parseFloat(alert.premium || alert.price || '0'),
+              price: parseFloat(alert.price || alert.premium || '0'),
+              implied_volatility: parseFloat(alert.implied_volatility || '0'),
+              unusual_activity: alert.tags?.includes('unusual') || false,
+              timestamp: alert.executed_at ? new Date(alert.executed_at).toISOString() : new Date().toISOString(),
+              executed_at: alert.executed_at,
+              size: alert.size || 0,
+              tags: alert.tags || [],
+              delta: parseFloat(alert.delta || '0'),
+              theta: parseFloat(alert.theta || '0'),
+              gamma: parseFloat(alert.gamma || '0'),
+              vega: parseFloat(alert.vega || '0'),
+            }));
           }
         } catch (error) {
           console.error(`Failed to fetch options data for ${ticker}:`, error);
@@ -77,8 +109,9 @@ export default function OptionsPage() {
     }
   });
 
-  const getOptionTypeColor = (type: 'CALL' | 'PUT') => {
-    return type === 'CALL' 
+  const getOptionTypeColor = (type: 'CALL' | 'PUT' | 'call' | 'put') => {
+    const upperType = type.toUpperCase();
+    return upperType === 'CALL' 
       ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
       : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
   };
@@ -180,7 +213,7 @@ export default function OptionsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {formatCurrency(optionsData.reduce((sum, item) => sum + item.premium, 0) / optionsData.length || 0)}
+                {formatCurrency(optionsData.reduce((sum, item) => sum + (typeof item.premium === 'number' ? item.premium : parseFloat(item.premium as string) || 0), 0) / optionsData.length || 0)}
               </div>
             </CardContent>
           </Card>
@@ -199,7 +232,7 @@ export default function OptionsPage() {
             </Card>
           ) : (
             filteredData.map(item => (
-              <Card key={item.contract_id} className="hover:shadow-lg transition-shadow">
+              <Card key={item.option_symbol || `${item.ticker}-${item.strike}-${item.expiry}`} className="hover:shadow-lg transition-shadow">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
@@ -235,7 +268,7 @@ export default function OptionsPage() {
                       
                       <div className="text-right">
                         <p className="text-sm text-gray-500">OI</p>
-                        <p className="font-semibold">{formatVolume(item.open_interest)}</p>
+                        <p className="font-semibold">{formatVolume(item.open_interest || 0)}</p>
                       </div>
                       
                       <div className="text-right">
@@ -250,7 +283,7 @@ export default function OptionsPage() {
                       
                       <div className="text-right">
                         <p className="text-sm text-gray-500">Time</p>
-                        <p className="text-xs">{new Date(item.timestamp).toLocaleTimeString()}</p>
+                        <p className="text-xs">{item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : 'N/A'}</p>
                       </div>
                     </div>
                     
@@ -275,7 +308,7 @@ export default function OptionsPage() {
                         </span>
                       </div>
                       <p className="text-xs text-orange-700 dark:text-orange-300 mt-1">
-                        Volume is {((item.volume / Math.max(1, item.open_interest)) * 100).toFixed(0)}% of open interest
+                        Volume is {((item.volume / Math.max(1, item.open_interest || 1)) * 100).toFixed(0)}% of open interest
                       </p>
                     </div>
                   )}

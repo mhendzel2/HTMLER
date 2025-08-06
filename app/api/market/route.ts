@@ -8,13 +8,21 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'tide';
-    const sector = searchParams.get('sector');
     const date = searchParams.get('date');
 
     let data;
     switch (type) {
       case 'tide':
-        data = await unusualWhalesAPI.getMarketTide(sector || undefined, date || undefined);
+        const interval5m = searchParams.get('interval_5m') === 'true';
+        const otmOnly = searchParams.get('otm_only') === 'true';
+        data = await unusualWhalesAPI.getMarketTide(date || undefined, interval5m, otmOnly);
+        break;
+      case 'sector-tide':
+        const sector = searchParams.get('sector');
+        if (!sector) {
+          return NextResponse.json({ error: 'Sector parameter is required for sector-tide' }, { status: 400 });
+        }
+        data = await unusualWhalesAPI.getSectorTide(sector, date || undefined);
         break;
       case 'correlations':
         const startDate = searchParams.get('start_date');

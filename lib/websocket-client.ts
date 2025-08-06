@@ -49,7 +49,9 @@ export class UnusualWhalesWebSocket {
             'gex_strike:TICKER',
             'price:TICKER',
             'flow-alerts',
-            'news'
+            'news',
+            'option_trades',
+            'option_trades:<TICKER>'
           ]
         };
       } else {
@@ -247,6 +249,34 @@ export class UnusualWhalesWebSocket {
     
     // Exponential backoff
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+  }
+
+  /**
+   * Subscribe to option trades for all tickers
+   */
+  subscribeToOptionTrades(callback: (data: any) => void): void {
+    this.subscribe('option_trades', callback);
+  }
+
+  /**
+   * Subscribe to option trades for a specific ticker
+   */
+  subscribeToTickerOptionTrades(ticker: string, callback: (data: any) => void): void {
+    this.subscribe(`option_trades:${ticker.toUpperCase()}`, callback);
+  }
+
+  /**
+   * Unsubscribe from option trades
+   */
+  unsubscribeFromOptionTrades(callback?: (data: any) => void): void {
+    this.unsubscribe('option_trades', callback);
+  }
+
+  /**
+   * Unsubscribe from ticker-specific option trades
+   */
+  unsubscribeFromTickerOptionTrades(ticker: string, callback?: (data: any) => void): void {
+    this.unsubscribe(`option_trades:${ticker.toUpperCase()}`, callback);
   }
 
   /**

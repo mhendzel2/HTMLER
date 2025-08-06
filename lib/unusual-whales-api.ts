@@ -102,11 +102,21 @@ export class UnusualWhalesAPI {
   }
 
   // Market Endpoints
-  async getMarketTide(sector?: string, date?: string, interval5m = false) {
-    const endpoint = sector ? `/market/${sector}/sector-tide` : '/market/market-tide';
+  async getMarketTide(date?: string, interval5m = true, otmOnly = false) {
+    const endpoint = '/market/market-tide';
     const params: Record<string, string | boolean> = {};
     if (date) params.date = date;
-    if (interval5m) params.interval_5m = interval5m;
+    params.interval_5m = interval5m;
+    params.otm_only = otmOnly;
+    
+    return this.makeRequest(endpoint, { params, cache: 'no-store' });
+  }
+
+  async getSectorTide(sector: string, date?: string) {
+    const endpoint = `/market/${encodeURIComponent(sector)}/sector-tide`;
+    const params: Record<string, string> = {};
+    if (date) params.date = date;
+    
     return this.makeRequest(endpoint, { params, cache: 'no-store' });
   }
 
@@ -150,7 +160,9 @@ export class UnusualWhalesAPI {
   }
 
   async getStockOptionsData(ticker: string) {
-    return this.makeRequest(`/stock/${ticker}/options`);
+    // Since /stock/{ticker}/options doesn't exist, use flow-alerts as an alternative
+    // This will give us recent options activity for the ticker
+    return this.getStockFlowAlerts(ticker, true, true, 50);
   }
 
   async getStockGreeks(ticker: string) {
@@ -192,12 +204,24 @@ export class UnusualWhalesAPI {
     isBidSide: boolean = true, 
     limit: number = 100
   ) {
+    // Since /stock/{ticker}/flow-alerts doesn't exist, use general flow alerts and filter
     const params: Record<string, string | boolean | number> = { 
-      is_ask_side: isAskSide,
-      is_bid_side: isBidSide,
-      limit 
+      limit: limit * 2 // Get more to account for filtering
     };
-    return this.makeRequest(`/stock/${ticker}/flow-alerts`, { params });
+    
+    try {
+      const response = await this.makeRequest('/option-trades/flow-alerts', { params });
+      // Filter the results by ticker if we got data
+      if (response?.data?.data) {
+        response.data.data = response.data.data.filter((alert: any) => 
+          alert.underlying_symbol === ticker.toUpperCase()
+        );
+      }
+      return response;
+    } catch (error) {
+      // Fallback to using OI changes which is known to work
+      return this.makeRequest('/market/oi-change', { params: { limit: 50, page: 0 } });
+    }
   }
 
   async getFlowAlerts(limit: number = 50) {

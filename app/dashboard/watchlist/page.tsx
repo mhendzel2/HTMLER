@@ -71,18 +71,21 @@ export default function WatchlistPage() {
       const response = await fetch('/api/watchlist');
       if (response.ok) {
         const data = await response.json();
-        setWatchlists(data);
+        
+        // Ensure data is an array before setting it
+        const watchlistArray = Array.isArray(data) ? data : [];
+        setWatchlists(watchlistArray);
         
         // Set active watchlist to default or first one
-        const defaultWatchlist = data.find((w: WatchlistData) => w.isDefault);
+        const defaultWatchlist = watchlistArray.find((w: WatchlistData) => w.isDefault);
         if (defaultWatchlist) {
           setActiveWatchlist(defaultWatchlist.id);
-        } else if (data.length > 0) {
-          setActiveWatchlist(data[0].id);
+        } else if (watchlistArray.length > 0) {
+          setActiveWatchlist(watchlistArray[0].id);
         }
         
         // Fetch quotes for all stocks
-        const allTickers = data.flatMap((w: WatchlistData) => 
+        const allTickers = watchlistArray.flatMap((w: WatchlistData) => 
           w.items.map((item: WatchlistItem) => item.stock.ticker)
         );
         await fetchStockQuotes(allTickers);
@@ -181,7 +184,7 @@ export default function WatchlistPage() {
     fetchWatchlists();
   }, []);
 
-  const currentWatchlist = watchlists.find(w => w.id === activeWatchlist);
+  const currentWatchlist = (Array.isArray(watchlists) ? watchlists : []).find(w => w.id === activeWatchlist);
 
   if (loading) {
     return (
