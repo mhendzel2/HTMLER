@@ -138,11 +138,13 @@ export default function PaperTradingPage() {
         }));
         console.log('✅ Connected to IBKR TWS Paper Trading');
       } else {
-        throw new Error('IBKR connection failed');
+        // Connection failed, fallback to virtual mode
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'IBKR connection failed');
       }
     } catch (error) {
       console.log('⚠️ IBKR unavailable, using virtual trading mode');
-      setIbkrConnection(prev => ({ ...prev, status: 'error' }));
+      setIbkrConnection(prev => ({ ...prev, status: 'disconnected' }));
     }
   };
 
