@@ -1,21 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-
-// Simple in-memory storage for standalone app
-let watchlists: any[] = [
-  {
-    id: '1',
-    name: 'Default Watchlist',
-    description: 'My main watchlist',
-    isDefault: true,
-    items: []
-  }
-];
+import { watchlists, Watchlist } from './store';
 
 export async function GET() {
   try {
-    return NextResponse.json({ data: watchlists });
+    return NextResponse.json(watchlists);
   } catch (error) {
     console.error('Error fetching watchlists:', error);
     return NextResponse.json(
@@ -36,7 +26,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const newWatchlist = {
+    const newWatchlist: Watchlist = {
       id: (watchlists.length + 1).toString(),
       name: body.name,
       description: body.description || '',
@@ -46,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     watchlists.push(newWatchlist);
 
-    return NextResponse.json({ data: newWatchlist }, { status: 201 });
+    return NextResponse.json(newWatchlist, { status: 201 });
   } catch (error) {
     console.error('Error creating watchlist:', error);
     return NextResponse.json(
