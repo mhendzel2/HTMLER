@@ -9,7 +9,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, Session
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import JSON
 from sqlalchemy.sql import func
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -266,8 +267,8 @@ class AnalysisResult(Base, TimestampMixin):
     analysis_date = Column(DateTime, nullable=False, index=True)
     
     # Analysis parameters and results stored as JSON
-    parameters = Column(JSONB)
-    results = Column(JSONB)
+    parameters = Column(JSON)
+    results = Column(JSON)
     
     # Metadata
     version = Column(String(20))  # Analysis algorithm version
