@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Header } from '@/components/dashboard/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatVolume, formatPercent } from '@/lib/utils';
-import { Activity, TrendingUp, AlertTriangle, Eye, Filter } from 'lucide-react';
+import { Activity, TrendingUp, AlertTriangle, Eye, Filter, Wifi, WifiOff, Radio } from 'lucide-react';
+import { unusualWhalesWS } from '@/lib/websocket-client';
 
 interface OptionsActivity {
   ticker: string;
@@ -36,8 +37,12 @@ export default function OptionsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [optionsData, setOptionsData] = useState<OptionsActivity[]>([]);
   const [filter, setFilter] = useState<'all' | 'unusual' | 'calls' | 'puts'>('all');
+  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'polling'>('connecting');
+  const cleanupRef = useRef<(() => void) | null>(null);
   const [advancedFilters, setAdvancedFilters] = useState({
     minimumPremium: 100000,
+    volumeThreshold: 50,
     tideType: 'equity_only',
     moneyness: 'otm',
     expiration: 'zero_dte',
@@ -46,51 +51,79 @@ export default function OptionsPage() {
   const fetchOptionsData = async () => {
     setRefreshing(true);
     try {
-      // Fetch flow alerts data for popular tickers since API requires ticker parameter
-      const tickers = ['AAPL', 'TSLA', 'NVDA', 'MSFT', 'SPY'];
-      const optionsPromises = tickers.map(async (ticker) => {
-        try {
-          const response = await fetch(`/api/options?ticker=${ticker}&type=flow-alerts`);
-          if (response.ok) {
-            const data = await response.json();
-            // Transform flow alerts data to match our interface
-            const flowAlerts = data.data?.data || data.data || [];
-            return flowAlerts.map((alert: any) => ({
-              ticker: alert.underlying_symbol || ticker,
-              option_symbol: alert.option_symbol,
-              underlying_symbol: alert.underlying_symbol || ticker,
-              option_type: (alert.option_type || 'call').toUpperCase() as 'CALL' | 'PUT',
-              strike: parseFloat(alert.strike || '0'),
-              expiry: alert.expiry || '',
-              volume: alert.size || alert.volume || 0,
-              open_interest: alert.open_interest || 0,
-              premium: parseFloat(alert.premium || alert.price || '0'),
-              price: parseFloat(alert.price || alert.premium || '0'),
-              implied_volatility: parseFloat(alert.implied_volatility || '0'),
-              unusual_activity: alert.tags?.includes('unusual') || false,
-              timestamp: alert.executed_at ? new Date(alert.executed_at).toISOString() : new Date().toISOString(),
-              executed_at: alert.executed_at,
-              size: alert.size || 0,
-              tags: alert.tags || [],
-              delta: parseFloat(alert.delta || '0'),
-              theta: parseFloat(alert.theta || '0'),
-              gamma: parseFloat(alert.gamma || '0'),
-              vega: parseFloat(alert.vega || '0'),
-            }));
-          }
-        } catch (error) {
-          console.error(`Failed to fetch options data for ${ticker}:`, error);
-        }
-        return [];
-      });
-
-      const allOptionsData = await Promise.all(optionsPromises);
-      const flattenedData: OptionsActivity[] = allOptionsData.flat();
+      // First try to connect to WebSocket for real-time data
+      const wsConnected = await unusualWhalesWS.connect();
       
-      setOptionsData(flattenedData);
+      if (wsConnected) {
+        setConnectionStatus('connected');
+        setIsWebSocketConnected(true);
+        
+        // Subscribe to flow alerts
+        unusualWhalesWS.subscribeToFlowAlerts((alert) => {
+          const newActivity: OptionsActivity = {
+            ticker: alert.ticker,
+            option_symbol: alert.option_chain,
+            underlying_symbol: alert.ticker,
+            option_type: alert.option_chain.includes('C') ? 'CALL' : 'PUT',
+            strike: parseFloat(alert.option_chain.match(/\d+/)?.[0] || '0') / 1000,
+            expiry: new Date().toISOString().split('T')[0], // Simplified for now
+            volume: alert.volume,
+            open_interest: alert.open_interest,
+            premium: alert.total_premium,
+            price: alert.price,
+            implied_volatility: 0, // Not provided in flow alerts
+            unusual_activity: true, // All flow alerts are unusual by definition
+            timestamp: new Date(alert.executed_at).toISOString(),
+            executed_at: alert.executed_at,
+            size: alert.total_size,
+            tags: [alert.rule_name],
+          };
+          
+          setOptionsData(prev => [newActivity, ...prev.slice(0, 99)]); // Keep last 100
+        }, advancedFilters.volumeThreshold);
+        
+      } else {
+        // Fallback to polling
+        setConnectionStatus('polling');
+        setIsWebSocketConnected(false);
+        
+        const cleanup = unusualWhalesWS.startFlowAlertsPolling((alerts) => {
+          const newActivities = alerts.map((alert): OptionsActivity => ({
+            ticker: alert.ticker,
+            option_symbol: alert.option_chain,
+            underlying_symbol: alert.ticker,
+            option_type: alert.option_chain.includes('C') ? 'CALL' : 'PUT',
+            strike: parseFloat(alert.option_chain.match(/\d+/)?.[0] || '0') / 1000,
+            expiry: new Date().toISOString().split('T')[0],
+            volume: alert.volume,
+            open_interest: alert.open_interest,
+            premium: alert.total_premium,
+            price: alert.price,
+            implied_volatility: 0,
+            unusual_activity: true,
+            timestamp: new Date(alert.executed_at).toISOString(),
+            executed_at: alert.executed_at,
+            size: alert.total_size,
+            tags: [alert.rule_name],
+          }));
+          
+          setOptionsData(prev => {
+            const combined = [...newActivities, ...prev];
+            // Remove duplicates based on id and keep only recent 100
+            const unique = combined.filter((item, index, self) => 
+              self.findIndex(i => i.option_symbol === item.option_symbol && i.executed_at === item.executed_at) === index
+            );
+            return unique.slice(0, 100);
+          });
+        }, advancedFilters.volumeThreshold);
+        
+        cleanupRef.current = cleanup;
+      }
+      
     } catch (error) {
       console.error('Failed to fetch options data:', error);
-      setOptionsData([]); // Set empty array instead of mock data on error
+      setConnectionStatus('polling');
+      setOptionsData([]);
     } finally {
       setRefreshing(false);
       setLoading(false);
@@ -99,13 +132,26 @@ export default function OptionsPage() {
 
   useEffect(() => {
     fetchOptionsData();
+    
+    // Cleanup function
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+      }
+      unusualWhalesWS.disconnect();
+    };
   }, []);
 
   useEffect(() => {
     if (!loading) {
+      // Restart connection with new volume threshold
+      if (cleanupRef.current) {
+        cleanupRef.current();
+      }
+      unusualWhalesWS.disconnect();
       fetchOptionsData();
     }
-  }, [advancedFilters]);
+  }, [advancedFilters.volumeThreshold]);
 
   const filteredData = optionsData.filter(item => {
     const premium = typeof item.premium === 'string' ? parseFloat(item.premium) : item.premium;
@@ -139,6 +185,28 @@ export default function OptionsPage() {
     setAdvancedFilters(prev => ({ ...prev, [key]: value }));
   };
 
+  const getConnectionStatusIcon = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return <Wifi className="h-4 w-4 text-green-600" />;
+      case 'polling':
+        return <WifiOff className="h-4 w-4 text-orange-600" />;
+      default:
+        return <Activity className="h-4 w-4 text-gray-600" />;
+    }
+  };
+
+  const getConnectionStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'WebSocket Connected';
+      case 'polling':
+        return 'Polling Mode';
+      default:
+        return 'Connecting...';
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex-1 overflow-auto">
@@ -153,60 +221,74 @@ export default function OptionsPage() {
   return (
     <div className="flex-1 overflow-auto">
       <Header 
-        title="Options Activity"
-        description="Monitor unusual options trades and market activity"
+        title="Options Flow Alerts"
+        description={`Real-time options flow alerts with ${advancedFilters.volumeThreshold}+ contract volume threshold`}
         onRefresh={fetchOptionsData}
         refreshing={refreshing}
       />
       
       <div className="p-6 space-y-6">
+        {/* Connection Status */}
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                {getConnectionStatusIcon()}
+                <span className="font-medium">{getConnectionStatusText()}</span>
+                {connectionStatus === 'connected' && (
+                  <Badge variant="default" className="bg-green-100 text-green-800">
+                    Real-time
+                  </Badge>
+                )}
+                {connectionStatus === 'polling' && (
+                  <Badge variant="secondary" className="bg-orange-100 text-orange-800">
+                    5s updates
+                  </Badge>
+                )}
+              </div>
+              <div className="text-sm text-gray-600">
+                Volume Threshold: {advancedFilters.volumeThreshold}+ contracts
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Advanced Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label htmlFor="minimumPremium" className="block text-sm font-medium text-gray-700">Minimum Premium</label>
+            <label htmlFor="minimumPremium" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Minimum Premium
+            </label>
             <input
               id="minimumPremium"
               type="number"
               value={advancedFilters.minimumPremium}
               onChange={(e) => handleFilterChange('minimumPremium', parseFloat(e.target.value))}
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600"
+              placeholder="100000"
             />
           </div>
           <div>
-            <label htmlFor="tideType" className="block text-sm font-medium text-gray-700">Tide Type</label>
-            <select
-              id="tideType"
-              value={advancedFilters.tideType}
-              onChange={(e) => handleFilterChange('tideType', e.target.value)}
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            >
-              <option value="equity_only">Equity Only</option>
-              <option value="etf_only">ETF Only</option>
-            </select>
+            <label htmlFor="volumeThreshold" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Volume Threshold
+            </label>
+            <input
+              id="volumeThreshold"
+              type="number"
+              value={advancedFilters.volumeThreshold}
+              onChange={(e) => handleFilterChange('volumeThreshold', parseInt(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600"
+              placeholder="50"
+            />
           </div>
           <div>
-            <label htmlFor="moneyness" className="block text-sm font-medium text-gray-700">Moneyness</label>
-            <select
-              id="moneyness"
-              value={advancedFilters.moneyness}
-              onChange={(e) => handleFilterChange('moneyness', e.target.value)}
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            >
-              <option value="otm">Out of the Money</option>
-              <option value="itm">In the Money</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="expiration" className="block text-sm font-medium text-gray-700">Expiration</label>
-            <select
-              id="expiration"
-              value={advancedFilters.expiration}
-              onChange={(e) => handleFilterChange('expiration', e.target.value)}
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            >
-              <option value="zero_dte">Zero DTE</option>
-              <option value="one_week">One Week</option>
-            </select>
+            <label htmlFor="refreshRate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Connection Status
+            </label>
+            <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
+              {getConnectionStatusIcon()}
+              <span className="text-sm">{getConnectionStatusText()}</span>
+            </div>
           </div>
         </div>
 

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatPercent, formatVolume } from '@/lib/utils';
-import { TrendingUp, TrendingDown, PieChart, Activity, DollarSign, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, PieChart, Activity, DollarSign, BarChart3, Flame, Eye } from 'lucide-react';
 
 interface MarketTideEntry {
   timestamp: string;
@@ -47,6 +47,21 @@ interface MarketMetrics {
   };
 }
 
+interface HottestChain {
+  ticker: string;
+  option_chain: string;
+  volume: number;
+  open_interest: number;
+  premium: number;
+  strike: number;
+  expiry: string;
+  type: 'call' | 'put';
+  underlying_price: number;
+  daily_perc_change: number;
+  iv_perc: number;
+  delta: number;
+}
+
 const SECTORS = [
   'Technology',
   'Healthcare',
@@ -60,6 +75,139 @@ const SECTORS = [
   'Utilities',
   'Basic Materials',
 ];
+
+// Hottest Chains Component
+function HottestChainsSection() {
+  const [hottestChains, setHottestChains] = useState<HottestChain[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchHottestChains = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/options/hottest-chains?limit=10&min_volume=1000&order=volume&order_direction=desc');
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Transform the data to match our interface
+        const transformedData: HottestChain[] = (data.data || []).map((chain: any) => ({
+          ticker: chain.ticker,
+          option_chain: chain.option_chain || `${chain.ticker}${chain.expiry}${chain.type?.toUpperCase()}${chain.strike}`,
+          volume: chain.volume,
+          open_interest: chain.open_interest,
+          premium: chain.premium,
+          strike: chain.strike,
+          expiry: chain.expiry,
+          type: chain.type?.toLowerCase(),
+          underlying_price: chain.underlying_price,
+          daily_perc_change: chain.daily_perc_change || 0,
+          iv_perc: chain.iv_perc || 0,
+          delta: chain.delta || 0,
+        }));
+
+        setHottestChains(transformedData);
+      } else {
+        console.error('Failed to fetch hottest chains:', response.statusText);
+        setHottestChains([]);
+      }
+    } catch (error) {
+      console.error('Error fetching hottest chains:', error);
+      setHottestChains([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHottestChains();
+  }, []);
+
+  const getOptionTypeColor = (type: string) => {
+    return type === 'call' 
+      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center space-x-2">
+              <Flame className="h-5 w-5 text-orange-500" />
+              <span>Hottest Option Chains</span>
+            </CardTitle>
+            <CardDescription>
+              Most active option contracts by volume (minimum 1,000 volume)
+            </CardDescription>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={fetchHottestChains}
+            disabled={loading}
+          >
+            {loading ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" />
+            ) : (
+              'Refresh'
+            )}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          </div>
+        ) : hottestChains.length > 0 ? (
+          <div className="space-y-3">
+            {hottestChains.slice(0, 8).map((chain, index) => (
+              <div 
+                key={chain.option_chain} 
+                className="flex items-center justify-between p-3 border rounded-lg hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center justify-center w-8 h-8 bg-orange-100 rounded-full text-orange-600 font-bold text-sm">
+                    {index + 1}
+                  </div>
+                  
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-semibold text-lg">{chain.ticker}</span>
+                      <Badge className={getOptionTypeColor(chain.type)}>
+                        {chain.type?.toUpperCase()}
+                      </Badge>
+                      <span className="text-sm text-gray-600">${chain.strike}</span>
+                      <span className="text-xs text-gray-500">{chain.expiry}</span>
+                    </div>
+                    <div className="flex items-center space-x-4 text-xs text-gray-500 mt-1">
+                      <span>Vol: {formatVolume(chain.volume)}</span>
+                      <span>OI: {formatVolume(chain.open_interest)}</span>
+                      <span>IV: {(chain.iv_perc * 100).toFixed(1)}%</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="text-right">
+                  <div className="text-sm font-semibold">
+                    {formatCurrency(chain.premium)}
+                  </div>
+                  <div className={`text-xs ${chain.daily_perc_change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {chain.daily_perc_change >= 0 ? '+' : ''}{formatPercent(chain.daily_perc_change)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-32">
+            <p className="text-gray-500">No data available</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function MarketPage() {
   const [loading, setLoading] = useState(true);
@@ -468,6 +616,9 @@ export default function MarketPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Hottest Option Chains */}
+        <HottestChainsSection />
 
         {/* Key Insights */}
         <Card>

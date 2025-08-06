@@ -262,6 +262,45 @@ export class UnusualWhalesWebSocket {
   }
 
   /**
+   * Subscribe to flow alerts with volume threshold
+   */
+  subscribeToFlowAlerts(callback: (alert: any) => void, volumeThreshold: number = 50): void {
+    this.subscribe('flow-alerts', (data) => {
+      // Filter by volume threshold
+      if (data.volume >= volumeThreshold) {
+        callback(data);
+      }
+    });
+  }
+
+  /**
+   * Start polling for flow alerts as fallback when WebSocket is not available
+   */
+  startFlowAlertsPolling(callback: (alerts: any[]) => void, volumeThreshold: number = 50, interval: number = 5000): () => void {
+    const pollFlowAlerts = async () => {
+      try {
+        const response = await fetch('/api/options/flow-alerts-poll');
+        if (response.ok) {
+          const alerts = await response.json();
+          const filteredAlerts = alerts.filter((alert: any) => alert.volume >= volumeThreshold);
+          if (filteredAlerts.length > 0) {
+            callback(filteredAlerts);
+          }
+        }
+      } catch (error) {
+        console.error('Flow alerts polling error:', error);
+      }
+    };
+
+    // Start polling immediately, then at intervals
+    pollFlowAlerts();
+    const intervalId = setInterval(pollFlowAlerts, interval);
+    
+    // Return cleanup function
+    return () => clearInterval(intervalId);
+  }
+
+  /**
    * Subscribe to option trades for a specific ticker
    */
   subscribeToTickerOptionTrades(ticker: string, callback: (data: any) => void): void {
