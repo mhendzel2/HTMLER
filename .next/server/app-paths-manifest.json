@@ -1,9 +1,9 @@
 {
-  "/api/market/route": "app/api/market/route.js",
   "/api/test-websocket-access/route": "app/api/test-websocket-access/route.js",
+  "/api/market/route": "app/api/market/route.js",
+  "/dashboard/filters/page": "app/dashboard/filters/page.js",
   "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/watchlist/page": "app/dashboard/watchlist/page.js",
-  "/dashboard/news/page": "app/dashboard/news/page.js",
   "/dashboard/market/page": "app/dashboard/market/page.js",
-  "/dashboard/filters/page": "app/dashboard/filters/page.js"
+  "/dashboard/websocket-test/page": "app/dashboard/websocket-test/page.js",
+  "/dashboard/trading/page": "app/dashboard/trading/page.js"
 }
