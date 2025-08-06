@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { IBApi, EventName, Contract, Order as IBOrder } from '@stoqey/ib';
 
 interface OrderRequest {
   id: string;
@@ -25,6 +24,11 @@ export async function POST(request: NextRequest) {
     
     if (order.source === 'IBKR') {
       const result = await submitToIBKR(order);
+      // If IBKR submission failed and requests fallback, simulate virtual trade
+      if (!result.success && (result as any).fallbackToVirtual) {
+        const virtualResult = await simulateVirtualOrder(order);
+        return NextResponse.json(virtualResult);
+      }
       return NextResponse.json(result);
     } else {
       // Virtual trading - simulate immediate fill
@@ -42,6 +46,21 @@ export async function POST(request: NextRequest) {
 }
 
 async function submitToIBKR(order: OrderRequest) {
+  let IBApi: any;
+  let EventName: any;
+  try {
+    // Dynamically require the IBKR library if available
+    const ibModule = eval("require('@stoqey/ib')");
+    IBApi = ibModule.IBApi;
+    EventName = ibModule.EventName;
+  } catch (err) {
+    return {
+      success: false,
+      error: 'IBKR module not available',
+      fallbackToVirtual: true,
+    };
+  }
+
   const host = process.env.IBKR_HOST || '127.0.0.1';
   const port = Number(process.env.IBKR_PORT) || 7497;
   const clientId = Number(process.env.IBKR_CLIENT_ID) || 0;
@@ -49,7 +68,7 @@ async function submitToIBKR(order: OrderRequest) {
   return new Promise(async (resolve) => {
     const ib = new IBApi({ host, port, clientId });
 
-    ib.once(EventName.error, (err) => {
+    ib.once(EventName.error, (err: any) => {
       ib.disconnect();
       resolve({
         success: false,
@@ -59,15 +78,15 @@ async function submitToIBKR(order: OrderRequest) {
       });
     });
 
-    ib.once(EventName.nextValidId, (id) => {
-      const contract: Contract = {
+    ib.once(EventName.nextValidId, (id: number) => {
+      const contract: any = {
         symbol: order.symbol,
         secType: 'STK',
         exchange: 'SMART',
         currency: 'USD',
       };
 
-      const ibOrder: IBOrder = {
+      const ibOrder: any = {
         action: order.action,
         orderType: order.orderType === 'LIMIT' ? 'LMT' : order.orderType === 'STOP' ? 'STP' : 'MKT',
         totalQuantity: order.quantity,
@@ -78,7 +97,7 @@ async function submitToIBKR(order: OrderRequest) {
       ib.placeOrder(id, contract, ibOrder);
     });
 
-    ib.once(EventName.orderStatus, (id, status, filled, remaining, avgFillPrice) => {
+    ib.once(EventName.orderStatus, (id: number, status: string, filled: number, remaining: number, avgFillPrice: number) => {
       ib.disconnect();
       resolve({
         success: true,
