@@ -1,10 +1,9 @@
 {
-  "/api/congress/route": "app/api/congress/route.js",
-  "/api/congress/top-traded/route": "app/api/congress/top-traded/route.js",
-  "/dashboard/options/page": "app/dashboard/options/page.js",
+  "/api/market/route": "app/api/market/route.js",
+  "/api/test-websocket-access/route": "app/api/test-websocket-access/route.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/watchlist/page": "app/dashboard/watchlist/page.js",
   "/dashboard/news/page": "app/dashboard/news/page.js",
-  "/dashboard/settings/page": "app/dashboard/settings/page.js",
-  "/dashboard/shorts/page": "app/dashboard/shorts/page.js",
-  "/dashboard/trading/finbert/page": "app/dashboard/trading/finbert/page.js",
-  "/dashboard/congress/page": "app/dashboard/congress/page.js"
+  "/dashboard/market/page": "app/dashboard/market/page.js",
+  "/dashboard/filters/page": "app/dashboard/filters/page.js"
 }
