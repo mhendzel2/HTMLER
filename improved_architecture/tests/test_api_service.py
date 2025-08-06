@@ -4,6 +4,7 @@ practices including mocking, fixtures, and async testing.
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 import aiohttp
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,16 +16,17 @@ from ..config import config
 from ..exceptions import APIError, RateLimitError, AuthenticationError
 
 
+@pytest_asyncio.fixture
+async def api_service():
+    """Create API service instance for testing."""
+    service = UnusualWhalesAPIService()
+    yield service
+    await service.close()
+
+
 class TestUnusualWhalesAPIService:
     """Test suite for UnusualWhalesAPIService."""
-    
-    @pytest.fixture
-    async def api_service(self):
-        """Create API service instance for testing."""
-        service = UnusualWhalesAPIService()
-        yield service
-        await service.close()
-    
+
     @pytest.fixture
     def mock_session(self):
         """Mock aiohttp session."""
@@ -278,27 +280,30 @@ class TestUnusualWhalesAPIService:
         with patch.object(api_service, 'get_stock_info') as mock_stock_info:
             with patch.object(api_service, 'get_options_flow') as mock_options:
                 with patch.object(api_service, 'get_insider_trades') as mock_insider:
-                    # Setup mocks
-                    mock_stock_info.return_value = APIResponse(success=True, data=sample_stock_data)
-                    mock_options.return_value = APIResponse(success=True, data={'data': []})
-                    mock_insider.return_value = APIResponse(success=True, data={'data': []})
-                    
-                    # Execute
-                    results = await api_service.batch_earnings_analysis(
-                        tickers, 
-                        include_options=True, 
-                        include_insider=True
-                    )
-                    
-                    # Assert
-                    assert len(results) == 2
-                    assert all(ticker in results for ticker in tickers)
-                    
-                    for ticker, ticker_results in results.items():
-                        assert 'stock_info' in ticker_results
-                        assert 'options_flow' in ticker_results
-                        assert 'insider_trades' in ticker_results
-                        assert all(result.success for result in ticker_results.values())
+                    with patch.object(api_service, 'get_net_premium_ticks') as mock_net_prem:
+                        # Setup mocks
+                        mock_stock_info.return_value = APIResponse(success=True, data=sample_stock_data)
+                        mock_options.return_value = APIResponse(success=True, data={'data': []})
+                        mock_insider.return_value = APIResponse(success=True, data={'data': []})
+                        mock_net_prem.return_value = APIResponse(success=True, data={'data': []})
+
+                        # Execute
+                        results = await api_service.batch_earnings_analysis(
+                            tickers,
+                            include_options=True,
+                            include_insider=True
+                        )
+
+                        # Assert
+                        assert len(results) == 2
+                        assert all(ticker in results for ticker in tickers)
+
+                        for ticker, ticker_results in results.items():
+                            assert 'stock_info' in ticker_results
+                            assert 'options_flow' in ticker_results
+                            assert 'insider_trades' in ticker_results
+                            assert 'net_premium' in ticker_results
+                            assert all(result.success for result in ticker_results.values())
     
     @pytest.mark.asyncio
     async def test_rate_limiting(self, api_service):
