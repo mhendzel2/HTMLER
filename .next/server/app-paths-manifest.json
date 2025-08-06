@@ -1,9 +1,1 @@
-{
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/earnings/route": "app/api/earnings/route.js",
-  "/api/test-websocket-access/route": "app/api/test-websocket-access/route.js",
-  "/api/options/route": "app/api/options/route.js",
-  "/dashboard/earnings/page": "app/dashboard/earnings/page.js",
-  "/dashboard/settings/page": "app/dashboard/settings/page.js",
-  "/dashboard/options/page": "app/dashboard/options/page.js"
-}
+{}
