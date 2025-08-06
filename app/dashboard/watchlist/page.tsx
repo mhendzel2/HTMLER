@@ -71,9 +71,9 @@ export default function WatchlistPage() {
       const response = await fetch('/api/watchlist');
       if (response.ok) {
         const data = await response.json();
-        
-        // Ensure data is an array before setting it
-        const watchlistArray = Array.isArray(data) ? data : [];
+
+        // API returns array directly, but handle legacy {data} shape
+        const watchlistArray = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
         setWatchlists(watchlistArray);
         
         // Set active watchlist to default or first one
