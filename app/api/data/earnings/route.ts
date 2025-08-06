@@ -88,8 +88,16 @@ export async function GET(request: NextRequest) {
       } else if (type === 'calendar') {
         const startDate = searchParams.get('start_date');
         const endDate = searchParams.get('end_date');
-        const response: any = await unusualWhalesAPI.getEarningsCalendar(startDate || undefined, endDate || undefined);
-        earningsData = response.data || response || [];
+        // Since there's no getEarningsCalendar method, fetch both premarket and afterhours
+        const [premarket, aftermarket] = await Promise.all([
+          unusualWhalesAPI.getEarningsPreMarket(startDate || date || undefined, limit),
+          unusualWhalesAPI.getEarningsAfterHours(startDate || date || undefined, limit)
+        ]);
+        const premResult: any = premarket;
+        const afterResult: any = aftermarket;
+        const premData = Array.isArray(premResult.data) ? premResult.data : (Array.isArray(premResult) ? premResult : []);
+        const afterData = Array.isArray(afterResult.data) ? afterResult.data : (Array.isArray(afterResult) ? afterResult : []);
+        earningsData = [...premData, ...afterData];
       } else {
         // Fetch both premarket and aftermarket for upcoming
         const [premarket, aftermarket] = await Promise.all([

@@ -210,7 +210,7 @@ export class UnusualWhalesAPI {
     };
     
     try {
-      const response = await this.makeRequest('/option-trades/flow-alerts', { params });
+      const response: any = await this.makeRequest('/option-trades/flow-alerts', { params });
       // Filter the results by ticker if we got data
       if (response?.data?.data) {
         response.data.data = response.data.data.filter((alert: any) => 
@@ -249,7 +249,7 @@ export class UnusualWhalesAPI {
   // Enhanced Net Premium Analysis with cumulative calculation
   async getStockNetPremTicksProcessed(ticker: string, date?: string) {
     try {
-      const response = await this.getStockNetPremTicks(ticker, date);
+      const response: any = await this.getStockNetPremTicks(ticker, date);
       
       if (!response?.data?.data || !Array.isArray(response.data.data)) {
         return response;

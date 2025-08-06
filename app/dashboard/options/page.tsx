@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -37,55 +36,30 @@ export default function OptionsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [optionsData, setOptionsData] = useState<OptionsActivity[]>([]);
   const [filter, setFilter] = useState<'all' | 'unusual' | 'calls' | 'puts'>('all');
+  const [advancedFilters, setAdvancedFilters] = useState({
+    minimumPremium: 100000,
+    tideType: 'equity_only',
+    moneyness: 'otm',
+    expiration: 'zero_dte',
+  });
 
   const fetchOptionsData = async () => {
     setRefreshing(true);
     try {
-      // Fetch flow alerts data for popular tickers since API requires ticker parameter
-      const tickers = ['AAPL', 'TSLA', 'NVDA', 'MSFT', 'SPY'];
-      const optionsPromises = tickers.map(async (ticker) => {
-        try {
-          const response = await fetch(`/api/options?ticker=${ticker}&type=flow-alerts`);
-          if (response.ok) {
-            const data = await response.json();
-            // Transform flow alerts data to match our interface
-            const flowAlerts = data.data?.data || data.data || [];
-            return flowAlerts.map((alert: any) => ({
-              ticker: alert.underlying_symbol || ticker,
-              option_symbol: alert.option_symbol,
-              underlying_symbol: alert.underlying_symbol || ticker,
-              option_type: (alert.option_type || 'call').toUpperCase() as 'CALL' | 'PUT',
-              strike: parseFloat(alert.strike || '0'),
-              expiry: alert.expiry || '',
-              volume: alert.size || alert.volume || 0,
-              open_interest: alert.open_interest || 0,
-              premium: parseFloat(alert.premium || alert.price || '0'),
-              price: parseFloat(alert.price || alert.premium || '0'),
-              implied_volatility: parseFloat(alert.implied_volatility || '0'),
-              unusual_activity: alert.tags?.includes('unusual') || false,
-              timestamp: alert.executed_at ? new Date(alert.executed_at).toISOString() : new Date().toISOString(),
-              executed_at: alert.executed_at,
-              size: alert.size || 0,
-              tags: alert.tags || [],
-              delta: parseFloat(alert.delta || '0'),
-              theta: parseFloat(alert.theta || '0'),
-              gamma: parseFloat(alert.gamma || '0'),
-              vega: parseFloat(alert.vega || '0'),
-            }));
-          }
-        } catch (error) {
-          console.error(`Failed to fetch options data for ${ticker}:`, error);
-        }
-        return [];
-      });
-
-      const allOptionsData = await Promise.all(optionsPromises);
-      const flattenedData: OptionsActivity[] = allOptionsData.flat();
-      
-      setOptionsData(flattenedData);
+      const response = await fetch(
+        `/api/options/net-flow?tide_type=${advancedFilters.tideType}&moneyness=${advancedFilters.moneyness}&expiration=${advancedFilters.expiration}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const filteredData = data.filter((item: any) => parseFloat(item.premium) >= advancedFilters.minimumPremium);
+        setOptionsData(filteredData);
+      } else {
+        console.error('Failed to fetch options data:', response.statusText);
+        setOptionsData([]);
+      }
     } catch (error) {
-      console.error('Failed to fetch options data:', error);
-      setOptionsData([]); // Set empty array instead of mock data on error
+      console.error('Error fetching options data:', error);
+      setOptionsData([]);
     } finally {
       setRefreshing(false);
       setLoading(false);
@@ -97,15 +71,16 @@ export default function OptionsPage() {
   }, []);
 
   const filteredData = optionsData.filter(item => {
+    const premium = typeof item.premium === 'string' ? parseFloat(item.premium) : item.premium;
     switch (filter) {
       case 'unusual':
-        return item.unusual_activity;
+        return item.unusual_activity && premium >= advancedFilters.minimumPremium;
       case 'calls':
-        return item.option_type === 'CALL';
+        return item.option_type === 'CALL' && premium >= advancedFilters.minimumPremium;
       case 'puts':
-        return item.option_type === 'PUT';
+        return item.option_type === 'PUT' && premium >= advancedFilters.minimumPremium;
       default:
-        return true;
+        return premium >= advancedFilters.minimumPremium;
     }
   });
 
@@ -114,6 +89,10 @@ export default function OptionsPage() {
     return upperType === 'CALL' 
       ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
       : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+  };
+
+  const handleFilterChange = (key: string, value: any) => {
+    setAdvancedFilters(prev => ({ ...prev, [key]: value }));
   };
 
   if (loading) {
@@ -137,38 +116,54 @@ export default function OptionsPage() {
       />
       
       <div className="p-6 space-y-6">
-        {/* Filters */}
-        <div className="flex items-center justify-between">
-          <div className="flex space-x-2">
-            {[
-              { key: 'all', label: 'All Activity', count: optionsData.length },
-              { key: 'unusual', label: 'Unusual Only', count: optionsData.filter(o => o.unusual_activity).length },
-              { key: 'calls', label: 'Calls', count: optionsData.filter(o => o.option_type === 'CALL').length },
-              { key: 'puts', label: 'Puts', count: optionsData.filter(o => o.option_type === 'PUT').length },
-            ].map(filterItem => (
-              <Button
-                key={filterItem.key}
-                variant={filter === filterItem.key ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilter(filterItem.key as any)}
-                className="flex items-center space-x-1"
-              >
-                <span>{filterItem.label}</span>
-                <Badge variant="secondary" className="ml-1 text-xs">
-                  {filterItem.count}
-                </Badge>
-              </Button>
-            ))}
+        {/* Advanced Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label htmlFor="minimumPremium" className="block text-sm font-medium text-gray-700">Minimum Premium</label>
+            <input
+              id="minimumPremium"
+              type="number"
+              value={advancedFilters.minimumPremium}
+              onChange={(e) => handleFilterChange('minimumPremium', parseFloat(e.target.value))}
+              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            />
           </div>
-          
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => alert('Advanced filters coming soon!')}
-          >
-            <Filter className="h-4 w-4 mr-2" />
-            More Filters
-          </Button>
+          <div>
+            <label htmlFor="tideType" className="block text-sm font-medium text-gray-700">Tide Type</label>
+            <select
+              id="tideType"
+              value={advancedFilters.tideType}
+              onChange={(e) => handleFilterChange('tideType', e.target.value)}
+              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            >
+              <option value="equity_only">Equity Only</option>
+              <option value="etf_only">ETF Only</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="moneyness" className="block text-sm font-medium text-gray-700">Moneyness</label>
+            <select
+              id="moneyness"
+              value={advancedFilters.moneyness}
+              onChange={(e) => handleFilterChange('moneyness', e.target.value)}
+              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            >
+              <option value="otm">Out of the Money</option>
+              <option value="itm">In the Money</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="expiration" className="block text-sm font-medium text-gray-700">Expiration</label>
+            <select
+              id="expiration"
+              value={advancedFilters.expiration}
+              onChange={(e) => handleFilterChange('expiration', e.target.value)}
+              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            >
+              <option value="zero_dte">Zero DTE</option>
+              <option value="one_week">One Week</option>
+            </select>
+          </div>
         </div>
 
         {/* Summary Cards */}
