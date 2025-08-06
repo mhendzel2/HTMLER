@@ -46,20 +46,51 @@ export default function OptionsPage() {
   const fetchOptionsData = async () => {
     setRefreshing(true);
     try {
-      const response = await fetch(
-        `/api/options/net-flow?tide_type=${advancedFilters.tideType}&moneyness=${advancedFilters.moneyness}&expiration=${advancedFilters.expiration}`
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const filteredData = data.filter((item: any) => parseFloat(item.premium) >= advancedFilters.minimumPremium);
-        setOptionsData(filteredData);
-      } else {
-        console.error('Failed to fetch options data:', response.statusText);
-        setOptionsData([]);
-      }
+      // Fetch flow alerts data for popular tickers since API requires ticker parameter
+      const tickers = ['AAPL', 'TSLA', 'NVDA', 'MSFT', 'SPY'];
+      const optionsPromises = tickers.map(async (ticker) => {
+        try {
+          const response = await fetch(`/api/options?ticker=${ticker}&type=flow-alerts`);
+          if (response.ok) {
+            const data = await response.json();
+            // Transform flow alerts data to match our interface
+            const flowAlerts = data.data?.data || data.data || [];
+            return flowAlerts.map((alert: any) => ({
+              ticker: alert.underlying_symbol || ticker,
+              option_symbol: alert.option_symbol,
+              underlying_symbol: alert.underlying_symbol || ticker,
+              option_type: (alert.option_type || 'call').toUpperCase() as 'CALL' | 'PUT',
+              strike: parseFloat(alert.strike || '0'),
+              expiry: alert.expiry || '',
+              volume: alert.size || alert.volume || 0,
+              open_interest: alert.open_interest || 0,
+              premium: parseFloat(alert.premium || alert.price || '0'),
+              price: parseFloat(alert.price || alert.premium || '0'),
+              implied_volatility: parseFloat(alert.implied_volatility || '0'),
+              unusual_activity: alert.tags?.includes('unusual') || false,
+              timestamp: alert.executed_at ? new Date(alert.executed_at).toISOString() : new Date().toISOString(),
+              executed_at: alert.executed_at,
+              size: alert.size || 0,
+              tags: alert.tags || [],
+              delta: parseFloat(alert.delta || '0'),
+              theta: parseFloat(alert.theta || '0'),
+              gamma: parseFloat(alert.gamma || '0'),
+              vega: parseFloat(alert.vega || '0'),
+            }));
+          }
+        } catch (error) {
+          console.error(`Failed to fetch options data for ${ticker}:`, error);
+        }
+        return [];
+      });
+
+      const allOptionsData = await Promise.all(optionsPromises);
+      const flattenedData: OptionsActivity[] = allOptionsData.flat();
+      
+      setOptionsData(flattenedData);
     } catch (error) {
-      console.error('Error fetching options data:', error);
-      setOptionsData([]);
+      console.error('Failed to fetch options data:', error);
+      setOptionsData([]); // Set empty array instead of mock data on error
     } finally {
       setRefreshing(false);
       setLoading(false);
@@ -70,17 +101,30 @@ export default function OptionsPage() {
     fetchOptionsData();
   }, []);
 
+  useEffect(() => {
+    if (!loading) {
+      fetchOptionsData();
+    }
+  }, [advancedFilters]);
+
   const filteredData = optionsData.filter(item => {
     const premium = typeof item.premium === 'string' ? parseFloat(item.premium) : item.premium;
+    
+    // Apply minimum premium filter
+    if (premium < advancedFilters.minimumPremium) {
+      return false;
+    }
+    
+    // Apply basic filters
     switch (filter) {
       case 'unusual':
-        return item.unusual_activity && premium >= advancedFilters.minimumPremium;
+        return item.unusual_activity;
       case 'calls':
-        return item.option_type === 'CALL' && premium >= advancedFilters.minimumPremium;
+        return item.option_type === 'CALL';
       case 'puts':
-        return item.option_type === 'PUT' && premium >= advancedFilters.minimumPremium;
+        return item.option_type === 'PUT';
       default:
-        return premium >= advancedFilters.minimumPremium;
+        return true;
     }
   });
 

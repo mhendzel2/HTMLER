@@ -1,8 +1,10 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/dashboard/settings/page": "app/dashboard/settings/page.js",
-  "/dashboard/earnings/page": "app/dashboard/earnings/page.js",
-  "/dashboard/market/page": "app/dashboard/market/page.js",
+  "/api/congress/route": "app/api/congress/route.js",
+  "/api/congress/top-traded/route": "app/api/congress/top-traded/route.js",
   "/dashboard/options/page": "app/dashboard/options/page.js",
+  "/dashboard/news/page": "app/dashboard/news/page.js",
+  "/dashboard/settings/page": "app/dashboard/settings/page.js",
+  "/dashboard/shorts/page": "app/dashboard/shorts/page.js",
+  "/dashboard/trading/finbert/page": "app/dashboard/trading/finbert/page.js",
   "/dashboard/congress/page": "app/dashboard/congress/page.js"
 }
