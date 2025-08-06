@@ -20,6 +20,10 @@ import {
   TrendingDown,
   Building2,
   BarChart3,
+  Bot,
+  Target,
+  LineChart,
+  Brain,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -71,6 +75,26 @@ const navigation = [
     name: 'Watchlists',
     href: '/dashboard/watchlist',
     icon: Bookmark,
+  },
+  {
+    name: 'Trade Analysis',
+    href: '/dashboard/trading',
+    icon: Target,
+  },
+  {
+    name: 'Paper Trading',
+    href: '/dashboard/trading/paper',
+    icon: Bot,
+  },
+  {
+    name: 'Performance',
+    href: '/dashboard/trading/performance',
+    icon: LineChart,
+  },
+  {
+    name: 'FINBERT Analysis',
+    href: '/dashboard/trading/finbert',
+    icon: Brain,
   },
 ];
 

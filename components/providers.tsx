@@ -3,6 +3,7 @@
 
 import { ReactNode, useEffect, useState } from 'react';
 import { ThemeProvider } from './theme-provider';
+import { NewsProvider } from '@/lib/contexts/news-context';
 
 interface ProvidersProps {
   children: ReactNode;
@@ -26,7 +27,9 @@ export function Providers({ children }: ProvidersProps) {
       enableSystem
       disableTransitionOnChange
     >
-      {children}
+      <NewsProvider>
+        {children}
+      </NewsProvider>
     </ThemeProvider>
   );
 }

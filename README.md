@@ -1,138 +1,184 @@
 
 # Unusual Whales Analytics Dashboard
 
-A comprehensive analytics dashboard for monitoring and analyzing stock options, earnings, congressional trading, and market data using the Unusual Whales API.
+A comprehensive trading analytics platform that integrates with the Unusual Whales API to provide real-time market data, options analysis, and trading insights.
 
-## Features
+## 🚀 Quick Start
 
-### 📊 Core Analytics
-- **Market Overview**: Real-time market trends, correlations, and sector analysis
-- **Earnings Analysis**: Track earnings announcements, expected moves, and performance
-- **Options Activity**: Monitor unusual options activity and volume spikes
-- **Watchlist Management**: Create and manage multiple ticker watchlists
+### 1. API Key Setup (REQUIRED)
 
-### 🏛️ Extended Features
-- **Congress Trading**: Track congressional stock trades and insider activity
-- **Shorts Analysis**: Monitor short interest, FTDs, and short volume ratios
-- **Institutional Data**: View institutional holdings, activity, and filings
-- **News & Headlines**: Stay updated with financial news and market sentiment
+**Important:** You must add your Unusual Whales API key for the app to function properly.
 
-### 🛠️ Technical Features
-- **Auto-refresh**: Configurable 5-minute data refresh intervals
-- **Advanced Charting**: Interactive charts with technical indicators
-- **Real-time Data**: Live market data with instant notifications
-- **Professional Interface**: Clean, responsive dashboard design
-
-## Setup Instructions
-
-### Prerequisites
-- Node.js 18+ installed
-- Unusual Whales API key (sign up at [unusualwhales.com](https://unusualwhales.com))
-
-### Installation
-
-1. **Extract and navigate to the project**:
-   ```bash
-   cd unusual-whales-analytics/app
+1. Locate the `.env` file in the project root
+2. Replace `your_actual_api_key_here` with your real API key from Unusual Whales:
+   ```
+   UNUSUAL_WHALES_API_KEY="your_actual_api_key_from_unusual_whales"
    ```
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+### 2. Install Dependencies
 
-3. **Configure environment variables**:
-   - Copy `.env.example` to `.env`:
-     ```bash
-     cp .env.example .env
-     ```
-   - Edit `.env` and add your Unusual Whales API key:
-     ```
-     UNUSUAL_WHALES_API_KEY=your_actual_api_key_here
-     ```
+```bash
+npm install
+```
 
-4. **Run the application**:
-   ```bash
-   # Development mode
-   npm run dev
+### 3. Start the Development Server
 
-   # Production mode
-   npm run build
-   npm start
-   ```
+```bash
+npm run dev
+```
 
-5. **Access the dashboard**:
-   Open your browser and go to `http://localhost:3000`
+The application will be available at `http://localhost:3000`
 
-## API Features Included
+## 📊 Features
 
-### Market Data
-- Market tide and sector analysis
-- Market correlations
-- FDA calendar events
-- Open interest changes
+### Core Analytics
+- **Earnings Analysis**: Filter earnings by put/call ratios and options volume with real-time data
+- **Options Activity**: Monitor unusual options activity and institutional flows
+- **Market Overview**: Track market sentiment and key metrics
+- **News Integration**: Automatic news fetching for watchlist and earnings tickers
 
-### Options Analysis  
-- Option contract details and intraday data
-- Volume profiles and Greeks
-- Stock options data and OI per strike/expiry
-- Net premium flow analysis
+### Advanced Trading Features
+- **Paper Trading**: IBKR TWS integration for paper trading
+- **Performance Tracking**: Monitor trade success rates and strategy performance
+- **FINBERT Integration**: AI-powered sentiment analysis and market regime detection
+- **Dynamic Strategy Management**: Adaptive trading strategies based on market conditions
 
-### Stock Information
-- Stock info, state, and net premium ticks
-- Interpolated IV and NOPE calculations
-- Greek flow and spot exposures
-- Dark pool/off-exchange data
+### Data Sources
+- **Congress Trading**: Track congressional trading activity
+- **Institutional Data**: Monitor institutional holdings and activities
+- **Short Interest**: Track short selling data and trends
+- **ETF Flows**: Monitor ETF inflow/outflow patterns
+- **Dark Pool Data**: Track off-exchange trading activity
 
-### Congressional & Institutional
-- Recent congressional trades and top traded tickers
-- Institution holdings, activity, and sectors
-- Latest institutional filings
+## 🔧 Configuration
 
-### News & Alerts
-- Financial news headlines with sentiment analysis
-- Alert configurations and notifications
-- Ticker-specific news filtering
+### Environment Variables
 
-### Short Interest Analysis
-- Short volume and ratio data
-- Fails to deliver (FTDs)
-- Short interest and borrowing rates
-- Volume analysis by exchange
+```env
+# Database (Auto-configured)
+DATABASE_URL="postgresql://..."
+NEXTAUTH_URL="https://..."
+NEXTAUTH_SECRET="..."
 
-## Usage Tips
+# Unusual Whales API (REQUIRED - Replace with your key)
+UNUSUAL_WHALES_API_KEY="your_actual_api_key_here"
+UNUSUAL_WHALES_API_BASE_URL="https://api.unusualwhales.com"
+```
 
-1. **Set up your API key**: Make sure your Unusual Whales API key is correctly configured in the `.env` file
-2. **Enable auto-refresh**: Toggle auto-refresh in each section to get live updates every 5 minutes
-3. **Create watchlists**: Add your favorite tickers to watchlists for quick monitoring
-4. **Filter data**: Use search and filter options to focus on specific stocks or date ranges
-5. **Explore all sections**: Each dashboard section provides unique insights into different market aspects
+### API Status Indicators
 
-## Troubleshooting
+The app includes visual indicators for API connectivity:
+- 🟢 **Connected**: Live data from Unusual Whales API
+- 🟡 **Mock Data**: Using placeholder data (API key missing/invalid)
+- 🔴 **Error**: API connection failed
+- 🟡 **Connecting**: Attempting to connect
+
+## 📈 Usage
+
+### Earnings Analysis
+1. Navigate to **Dashboard > Earnings**
+2. View filtered earnings based on:
+   - Put/Call ratio < 0.8 (bullish) or > 1.3 (bearish)
+   - Minimum options volume ≥ 200 contracts
+   - Market cap ≥ $1B
+3. Qualified tickers automatically trigger news fetching
+4. Click "View Options" to analyze options activity for earnings plays
+
+### Watchlist Management
+1. Go to **Dashboard > Watchlist**
+2. Add tickers to your watchlist
+3. News is automatically fetched for newly added tickers
+4. Monitor real-time price changes and volume
+
+### Dynamic News Integration
+- **Automatic Fetching**: News is fetched when tickers are added to watchlists or qualify in earnings analysis
+- **Real-time Updates**: 5-minute refresh cycles with optional auto-refresh
+- **Smart Filtering**: High-impact news prioritized for earnings analysis
+- **Browser Notifications**: Get notified of breaking news for your tickers
+
+## 🔌 API Integration
+
+### Unusual Whales Endpoints Used
+- `/api/earnings/afterhours` - After-hours earnings
+- `/api/earnings/premarket` - Pre-market earnings  
+- `/api/earnings/calendar` - Earnings calendar
+- `/api/news/headlines` - News headlines with ticker filtering
+- `/api/options/` - Options data and analytics
+- `/api/congress/recent-trades` - Congressional trading
+- `/api/institutions/` - Institutional data
+- `/api/market/` - Market-wide data
+
+### Rate Limiting
+- Built-in rate limiting (10 requests/second)
+- Automatic caching for frequently accessed data
+- Error handling with fallback to cached data
+
+## 🛠 Development
+
+### Project Structure
+```
+app/
+├── app/                 # Next.js app directory
+│   ├── dashboard/       # Main dashboard pages
+│   ├── api/            # API routes
+│   │   ├── data/       # Consolidated data endpoints
+│   │   ├── watchlist/  # Watchlist management
+│   │   └── earnings/   # Earnings-specific endpoints
+├── components/         # Reusable UI components
+├── lib/               # Utilities and contexts
+│   ├── contexts/      # React contexts (news, etc.)
+│   └── unusual-whales-api.ts  # API client
+└── README.md
+```
+
+### Adding New Features
+1. Create API routes in `/app/api/`
+2. Add UI components in `/components/`
+3. Update navigation in sidebar component
+4. Integrate with news context for automatic news fetching
+
+## 📱 Browser Notifications
+
+The app can send browser notifications for:
+- New earnings-related news for qualified tickers
+- Breaking news for watchlist tickers
+- High-impact market news
+
+Grant notification permissions when prompted for the best experience.
+
+## 🚨 Troubleshooting
 
 ### Common Issues
 
-**API Key Errors**:
-- Ensure your API key is valid and active
-- Check that the key is properly set in the `.env` file
-- Verify your API subscription includes the endpoints being accessed
+1. **No Live Data / Mock Data Showing**
+   - Check that your API key is correctly set in `.env`
+   - Verify your Unusual Whales subscription is active
+   - Check browser console for API errors
 
-**Build Errors**:
-- Make sure Node.js 18+ is installed
-- Delete `node_modules` and run `npm install` again
-- Check that all environment variables are properly set
+2. **Build Errors**
+   ```bash
+   npm run build
+   ```
+   - Ensure all dependencies are installed
+   - Check TypeScript errors in components
 
-**Data Loading Issues**:
-- Check your internet connection
-- Verify the Unusual Whales API is accessible
-- Look at browser console for specific error messages
+3. **News Not Loading**
+   - Verify API key permissions include news endpoints
+   - Check network connectivity
+   - Look for CORS or rate limiting issues
 
-### Getting Help
+### Support
+- Check Unusual Whales API documentation
+- Review browser console for detailed error messages
+- Ensure your API key has the necessary permissions
 
-- Check the browser console for detailed error messages
-- Review the Unusual Whales API documentation for endpoint specifics
-- Ensure your API subscription covers the features you're trying to use
+## 🔒 Security
 
-## License
+- API keys are stored in environment variables
+- No sensitive data is logged or cached in browser
+- All API requests use secure HTTPS connections
+- Built-in rate limiting prevents API abuse
 
-This is a personal analytics tool. Please respect the Unusual Whales API terms of service and usage limits.
+---
+
+**Note**: This application requires an active Unusual Whales API subscription. Mock data will be used if no valid API key is provided.
