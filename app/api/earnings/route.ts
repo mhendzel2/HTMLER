@@ -8,21 +8,20 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'afterhours';
+    const ticker = searchParams.get('ticker');
     const date = searchParams.get('date');
     const limit = parseInt(searchParams.get('limit') || '50');
     const page = parseInt(searchParams.get('page') || '0');
 
     let data;
-    if (type === 'afterhours') {
+    if (type === 'historical' && ticker) {
+      data = await unusualWhalesAPI.getEarningsHistorical(ticker);
+    } else if (type === 'afterhours') {
       data = await unusualWhalesAPI.getEarningsAfterHours(date || undefined, limit, page);
     } else if (type === 'premarket') {
       data = await unusualWhalesAPI.getEarningsPreMarket(date || undefined, limit, page);
-    } else if (type === 'calendar') {
-      const startDate = searchParams.get('start_date');
-      const endDate = searchParams.get('end_date');
-      data = await unusualWhalesAPI.getEarningsCalendar(startDate || undefined, endDate || undefined);
     } else {
-      return NextResponse.json({ error: 'Invalid type parameter' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid type parameter or missing ticker for historical data' }, { status: 400 });
     }
 
     return NextResponse.json(data);

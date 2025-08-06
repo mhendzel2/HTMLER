@@ -96,20 +96,41 @@ export default function WatchlistPage() {
   };
 
   const fetchStockQuotes = async (tickers: string[]) => {
-    // Mock stock quote data for demonstration
-    const quotes: Record<string, StockQuote> = {};
-    tickers.forEach(ticker => {
-      const basePrice = 100 + Math.random() * 500;
-      const change = (Math.random() - 0.5) * 20;
-      quotes[ticker] = {
-        ticker,
-        price: basePrice,
-        change,
-        changePercent: (change / basePrice) * 100,
-        volume: Math.floor(Math.random() * 10000000),
-      };
-    });
-    setStockQuotes(quotes);
+    if (tickers.length === 0) return;
+    
+    try {
+      // Fetch real stock data from API
+      const quotes: Record<string, StockQuote> = {};
+      
+      // Fetch data for each ticker
+      const promises = tickers.map(async (ticker) => {
+        try {
+          const response = await fetch(`/api/stocks/${ticker}?type=state`);
+          if (response.ok) {
+            const data = await response.json();
+            // Map API response to our StockQuote interface
+            if (data) {
+              quotes[ticker] = {
+                ticker: ticker,
+                price: data.last_price || 0,
+                change: data.change || 0,
+                changePercent: data.change_percent || 0,
+                volume: data.volume || 0,
+              };
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to fetch quote for ${ticker}:`, error);
+          // Don't add mock data - leave blank to show no data available
+        }
+      });
+
+      await Promise.all(promises);
+      setStockQuotes(quotes);
+    } catch (error) {
+      console.error('Failed to fetch stock quotes:', error);
+      setStockQuotes({}); // Set empty object instead of mock data on error
+    }
   };
 
   const addStockToWatchlist = async (ticker: string) => {

@@ -12,6 +12,83 @@ export interface Stock {
   isActive: boolean;
 }
 
+// Flow Analysis Types
+export interface FlowAlert {
+  alert_time: string;
+  ticker: string;
+  option_type: 'call' | 'put';
+  strike: number;
+  expiry: string;
+  volume: number;
+  premium: number;
+  iv: number;
+  delta: number;
+  gamma: number;
+  theta: number;
+  vega: number;
+  is_ask_side: boolean;
+  is_bid_side: boolean;
+  unusual_score: number;
+}
+
+export interface GreekFlow {
+  time: string;
+  delta_flow: number;
+  vega_flow: number;
+  gamma_exposure: number;
+  net_delta: number;
+  net_vega: number;
+  call_delta: number;
+  put_delta: number;
+  call_vega: number;
+  put_vega: number;
+}
+
+export interface NetPremiumTick {
+  time: string;
+  net_call_premium: number;
+  net_put_premium: number;
+  net_call_volume: number;
+  net_put_volume: number;
+  cumulative_call_premium: number;
+  cumulative_put_premium: number;
+}
+
+export interface MaxPain {
+  expiry: string;
+  max_pain_strike: number;
+  total_open_interest: number;
+  call_open_interest: number;
+  put_open_interest: number;
+  strikes: Array<{
+    strike: number;
+    call_oi: number;
+    put_oi: number;
+    total_pain: number;
+  }>;
+}
+
+export interface FlowSentiment {
+  ticker: string;
+  overall_sentiment: 'bullish' | 'bearish' | 'neutral';
+  confidence_score: number; // 0-100
+  metrics: {
+    net_premium_ratio: number; // calls vs puts premium
+    volume_ratio: number; // calls vs puts volume
+    delta_flow: number; // positive = bullish, negative = bearish
+    gamma_exposure: number; // market maker hedging pressure
+    unusual_activity_score: number; // how unusual is current activity
+    max_pain_distance: number; // distance from current price to max pain
+  };
+  breakdown: {
+    bullish_signals: string[];
+    bearish_signals: string[];
+    key_levels: number[];
+    risk_factors: string[];
+  };
+  last_updated: string;
+}
+
 export interface Watchlist {
   id: string;
   name: string;

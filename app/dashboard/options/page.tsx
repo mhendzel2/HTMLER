@@ -32,52 +32,28 @@ export default function OptionsPage() {
   const fetchOptionsData = async () => {
     setRefreshing(true);
     try {
-      // Mock data for demonstration
-      const mockData: OptionsActivity[] = [
-        {
-          ticker: 'AAPL',
-          contract_id: 'AAPL_240115C00185000',
-          option_type: 'CALL',
-          strike: 185,
-          expiry: '2024-01-15',
-          volume: 15420,
-          open_interest: 8932,
-          premium: 2.45,
-          implied_volatility: 28.5,
-          unusual_activity: true,
-          timestamp: new Date().toISOString(),
-        },
-        {
-          ticker: 'TSLA',
-          contract_id: 'TSLA_240115P00240000',
-          option_type: 'PUT',
-          strike: 240,
-          expiry: '2024-01-15',
-          volume: 8934,
-          open_interest: 12456,
-          premium: 8.75,
-          implied_volatility: 42.1,
-          unusual_activity: true,
-          timestamp: new Date(Date.now() - 900000).toISOString(),
-        },
-        {
-          ticker: 'NVDA',
-          contract_id: 'NVDA_240122C00480000',
-          option_type: 'CALL',
-          strike: 480,
-          expiry: '2024-01-22',
-          volume: 6789,
-          open_interest: 4523,
-          premium: 12.30,
-          implied_volatility: 35.8,
-          unusual_activity: false,
-          timestamp: new Date(Date.now() - 1800000).toISOString(),
-        },
-      ];
+      // Fetch real options data for popular tickers since API requires ticker parameter
+      const tickers = ['AAPL', 'TSLA', 'NVDA', 'MSFT', 'SPY'];
+      const optionsPromises = tickers.map(async (ticker) => {
+        try {
+          const response = await fetch(`/api/options?ticker=${ticker}&type=options`);
+          if (response.ok) {
+            const data = await response.json();
+            return data.data || [];
+          }
+        } catch (error) {
+          console.error(`Failed to fetch options data for ${ticker}:`, error);
+        }
+        return [];
+      });
+
+      const allOptionsData = await Promise.all(optionsPromises);
+      const flattenedData: OptionsActivity[] = allOptionsData.flat();
       
-      setOptionsData(mockData);
+      setOptionsData(flattenedData);
     } catch (error) {
       console.error('Failed to fetch options data:', error);
+      setOptionsData([]); // Set empty array instead of mock data on error
     } finally {
       setRefreshing(false);
       setLoading(false);

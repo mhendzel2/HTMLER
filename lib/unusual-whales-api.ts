@@ -102,10 +102,11 @@ export class UnusualWhalesAPI {
   }
 
   // Market Endpoints
-  async getMarketTide(sector?: string, date?: string) {
-    const endpoint = sector ? `/market/${sector}/sector-tide` : '/market/tide';
-    const params: Record<string, string> = {};
+  async getMarketTide(sector?: string, date?: string, interval5m = false) {
+    const endpoint = sector ? `/market/${sector}/sector-tide` : '/market/market-tide';
+    const params: Record<string, string | boolean> = {};
     if (date) params.date = date;
+    if (interval5m) params.interval_5m = interval5m;
     return this.makeRequest(endpoint, { params, cache: 'no-store' });
   }
 
@@ -129,11 +130,8 @@ export class UnusualWhalesAPI {
     return this.makeRequest('/earnings/premarket', { params });
   }
 
-  async getEarningsCalendar(startDate?: string, endDate?: string) {
-    const params: Record<string, string> = {};
-    if (startDate) params.start_date = startDate;
-    if (endDate) params.end_date = endDate;
-    return this.makeRequest('/earnings/calendar', { params });
+  async getEarningsHistorical(ticker: string) {
+    return this.makeRequest(`/earnings/${ticker}`);
   }
 
   // Options Endpoints
@@ -167,6 +165,11 @@ export class UnusualWhalesAPI {
     return this.makeRequest(`/stock/${ticker}/oi-per-expiry`);
   }
 
+  async getStockOptionsVolume(ticker: string, limit: number = 1) {
+    const params: Record<string, number> = { limit };
+    return this.makeRequest(`/stock/${ticker}/options-volume`, { params });
+  }
+
   // Stock Endpoints
   async getStockInfo(ticker: string) {
     return this.makeRequest(`/stock/${ticker}`);
@@ -180,6 +183,92 @@ export class UnusualWhalesAPI {
     const params: Record<string, string> = {};
     if (date) params.date = date;
     return this.makeRequest(`/stock/${ticker}/net-prem-ticks`, { params });
+  }
+
+  // GEX and Flow Analytics Endpoints
+  async getStockFlowAlerts(
+    ticker: string, 
+    isAskSide: boolean = true, 
+    isBidSide: boolean = true, 
+    limit: number = 100
+  ) {
+    const params: Record<string, string | boolean | number> = { 
+      is_ask_side: isAskSide,
+      is_bid_side: isBidSide,
+      limit 
+    };
+    return this.makeRequest(`/stock/${ticker}/flow-alerts`, { params });
+  }
+
+  async getFlowAlerts(limit: number = 50) {
+    const params: Record<string, string | number> = { limit };
+    return this.makeRequest('/option-trades/flow-alerts', { params });
+  }
+
+  async getStockGEX(ticker: string) {
+    return this.makeRequest(`/stock/${ticker}/gex`);
+  }
+
+  async getStockGreekFlow(ticker: string, date?: string, expiry?: string) {
+    const params: Record<string, string> = {};
+    if (date) params.date = date;
+    if (expiry) params.expiry = expiry;
+    return this.makeRequest(`/stock/${ticker}/greek-flow`, { params });
+  }
+
+  async getStockMaxPain(ticker: string, date?: string) {
+    const params: Record<string, string> = {};
+    if (date) params.date = date;
+    return this.makeRequest(`/stock/${ticker}/max-pain`, { params });
+  }
+
+  // Enhanced Net Premium Analysis with cumulative calculation
+  async getStockNetPremTicksProcessed(ticker: string, date?: string) {
+    try {
+      const response = await this.getStockNetPremTicks(ticker, date);
+      
+      if (!response?.data?.data || !Array.isArray(response.data.data)) {
+        return response;
+      }
+
+      const { data } = response.data;
+      const fieldsToSum = [
+        "net_call_premium",
+        "net_call_volume", 
+        "net_put_premium",
+        "net_put_volume"
+      ];
+
+      let result: any[] = [];
+      data.forEach((tick: any, idx: number) => {
+        // Parse numeric values
+        tick.net_call_premium = parseFloat(tick.net_call_premium || '0');
+        tick.net_put_premium = parseFloat(tick.net_put_premium || '0');
+        tick.net_call_volume = parseFloat(tick.net_call_volume || '0');
+        tick.net_put_volume = parseFloat(tick.net_put_volume || '0');
+        
+        // Add cumulative data from previous tick
+        if (idx !== 0) {
+          fieldsToSum.forEach((field) => {
+            tick[field] = tick[field] + result[idx - 1][field];
+          });
+        }
+        
+        result.push(tick);
+      });
+
+      return {
+        ...response,
+        data: {
+          ...response.data,
+          data: result
+        }
+      };
+    } catch (error) {
+      throw new UnusualWhalesAPIError(
+        `Failed to get processed net premium ticks for ${ticker}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   // Congress Endpoints
@@ -346,13 +435,6 @@ export class UnusualWhalesAPI {
 
   async getStockNOPE(ticker: string) {
     return this.makeRequest(`/stock/${ticker}/nope`);
-  }
-
-  async getStockGreekFlow(ticker: string, expiry?: string) {
-    const endpoint = expiry 
-      ? `/stock/${ticker}/greek-flow/${expiry}`
-      : `/stock/${ticker}/greek-flow`;
-    return this.makeRequest(endpoint);
   }
 
   async getStockSpotExposures(ticker: string, expiry?: string, strike?: number) {

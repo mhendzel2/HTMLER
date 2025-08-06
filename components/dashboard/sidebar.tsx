@@ -24,6 +24,7 @@ import {
   Target,
   LineChart,
   Brain,
+  Wifi,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -77,9 +78,14 @@ const navigation = [
     icon: Bookmark,
   },
   {
+    name: 'Trading Filters',
+    href: '/dashboard/filters',
+    icon: Target,
+  },
+  {
     name: 'Trade Analysis',
     href: '/dashboard/trading',
-    icon: Target,
+    icon: BarChart3,
   },
   {
     name: 'Paper Trading',
@@ -95,6 +101,16 @@ const navigation = [
     name: 'FINBERT Analysis',
     href: '/dashboard/trading/finbert',
     icon: Brain,
+  },
+  {
+    name: 'WebSocket Test',
+    href: '/dashboard/websocket-test',
+    icon: Wifi,
+  },
+  {
+    name: 'Settings',
+    href: '/dashboard/settings',
+    icon: Settings,
   },
 ];
 

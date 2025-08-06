@@ -48,26 +48,19 @@ export default function MarketPage() {
   const fetchMarketData = async () => {
     setRefreshing(true);
     try {
-      // Mock data for demonstration
-      const mockSectorData: SectorData[] = SECTORS.map(sector => ({
-        sector,
-        net_call_premium: Math.random() * 2000000 - 1000000,
-        net_put_premium: Math.random() * 1500000 - 750000,
-        net_volume: Math.floor(Math.random() * 100000),
-        performance: (Math.random() - 0.5) * 10,
-      }));
-
-      const mockData: MarketMetrics = {
-        overall_sentiment: Math.random() > 0.6 ? 'bullish' : Math.random() > 0.3 ? 'bearish' : 'neutral',
-        call_put_ratio: 0.8 + Math.random() * 0.8,
-        total_premium: Math.random() * 50000000,
-        unusual_activity_count: Math.floor(Math.random() * 200),
-        top_sectors: mockSectorData.sort((a, b) => Math.abs(b.net_call_premium) - Math.abs(a.net_call_premium)).slice(0, 6),
-      };
+      // Fetch real market data from API
+      const response = await fetch('/api/market');
       
-      setMarketData(mockData);
+      if (response.ok) {
+        const data = await response.json();
+        setMarketData(data);
+      } else {
+        console.error('Failed to fetch market data:', response.statusText);
+        setMarketData(null); // Set null instead of mock data on error
+      }
     } catch (error) {
       console.error('Failed to fetch market data:', error);
+      setMarketData(null); // Set null instead of mock data on error
     } finally {
       setRefreshing(false);
       setLoading(false);
