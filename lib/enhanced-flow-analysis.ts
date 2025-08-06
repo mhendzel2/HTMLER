@@ -33,44 +33,44 @@ export class EnhancedFlowAnalysisService {
 
     console.log('🚀 Starting FULL WebSocket earnings flow monitoring with authenticated access for:', tickers);
     this.isMonitoring = true;
+    tickers.forEach(ticker => this.monitoringTickers.add(ticker));
 
     // With confirmed WebSocket access, enable ALL real-time streams
     const success = await tradingFilters.startRealTimeMonitoring();
-    
+
     if (success) {
       console.log('✅ FULL WebSocket access confirmed - enabling ALL institutional-grade filters!');
-      
+
       // Subscribe to ALL high-value filters for maximum earnings insight
       tradingFilters.subscribeToFilter('big-money-otm-whales', (alert) => {
         this.processEarningsAlert(alert, tickers);
       });
-      
+
       tradingFilters.subscribeToFilter('dark-pool-correlation', (alert) => {
         this.processEarningsAlert(alert, tickers);
       });
-      
+
       tradingFilters.subscribeToFilter('aggressive-short-term', (alert) => {
         this.processEarningsAlert(alert, tickers);
       });
-      
-      // TODO: Enable when GEX/Price subscriptions are implemented
-      // Enable real-time GEX monitoring for gamma squeeze detection
-      // tickers.forEach(ticker => {
-      //   tradingFilters.subscribeToGEX(ticker, (gexData) => {
-      //     this.updateGEXData(ticker, gexData);
-      //   });
-      // });
 
-      // TODO: Enable when price subscriptions are implemented  
+      // Enable real-time GEX monitoring for gamma squeeze detection
+      tickers.forEach(ticker => {
+        tradingFilters.monitorGEX(ticker, (gexData) => {
+          this.updateGEXData(ticker, gexData);
+        });
+      });
+
+      // TODO: Enable when price subscriptions are implemented
       // Enable real-time price feeds for context
       // tickers.forEach(ticker => {
       //   tradingFilters.subscribeToPrice(ticker, (priceData) => {
       //     this.updatePriceContext(ticker, priceData);
       //   });
       // });
-      
+
       console.log(`📡 Real-time institutional flow monitoring active for ${tickers.length} earnings tickers`);
-      
+
     } else {
       console.log('⚠️ Fallback: WebSocket connection failed, using polling mode');
     }
@@ -173,28 +173,30 @@ export class EnhancedFlowAnalysisService {
     tickers.forEach(ticker => {
       const stats = this.getFlowStatistics(ticker);
       const alerts = this.getTickerFlow(ticker);
-      
+
       // Calculate metrics based on recent flow
       const callAlerts = alerts.filter(a => a.type === 'call');
       const putAlerts = alerts.filter(a => a.type === 'put');
-      
+
       const callPremium = callAlerts.reduce((sum, a) => sum + a.premium, 0);
       const putPremium = putAlerts.reduce((sum, a) => sum + a.premium, 0);
-      
+
       const netPremiumRatio = callPremium + putPremium > 0 ? callPremium / (callPremium + putPremium) : 0.5;
       const volumeRatio = callAlerts.length + putAlerts.length > 0 ? callAlerts.length / (callAlerts.length + putAlerts.length) : 0.5;
-      
+
+      const gexData = this.gexCache.get(ticker);
+
       // Calculate confidence based on volume of data and conviction
       let confidence = Math.min(90, alerts.length * 5); // More alerts = more confidence, cap at 90%
       const sentimentStrength = Math.abs(stats.bullishCount - stats.bearishCount) / Math.max(1, alerts.length);
       confidence = Math.min(95, confidence + sentimentStrength * 30);
-      
+
       // Generate signals
       const bullishSignals: string[] = [];
       const bearishSignals: string[] = [];
       const keyLevels: number[] = [];
       const riskFactors: string[] = [];
-      
+
       if (stats.bullishCount > stats.bearishCount * 1.5) {
         bullishSignals.push(`Strong call activity (${stats.bullishCount} vs ${stats.bearishCount})`);
       }
@@ -225,7 +227,7 @@ export class EnhancedFlowAnalysisService {
           net_premium_ratio: netPremiumRatio,
           volume_ratio: volumeRatio,
           delta_flow: callPremium - putPremium,
-          gamma_exposure: Math.abs(callPremium - putPremium) * 0.1, // Simplified gamma estimate
+          gamma_exposure: gexData?.totalGEX ?? Math.abs(callPremium - putPremium) * 0.1, // Use real-time GEX if available
           unusual_activity_score: Math.min(100, alerts.length * 2),
           max_pain_distance: Math.random() * 10 // Placeholder - would need more data
         },
@@ -288,7 +290,12 @@ export class EnhancedFlowAnalysisService {
     tradingFilters.unsubscribeFromFilter('big-money-otm-whales');
     tradingFilters.unsubscribeFromFilter('dark-pool-correlation');
     tradingFilters.unsubscribeFromFilter('aggressive-short-term');
-    
+
+    // Stop GEX monitoring for all tickers
+    this.monitoringTickers.forEach(ticker => {
+      tradingFilters.stopGEXMonitoring(ticker);
+    });
+
     // Clear monitoring tickers
     this.monitoringTickers.clear();
   }
