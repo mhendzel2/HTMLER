@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { IBApi, EventName, Contract, Order as IBOrder } from '@stoqey/ib';
 
 interface OrderRequest {
   id: string;
@@ -23,7 +24,6 @@ export async function POST(request: NextRequest) {
     });
     
     if (order.source === 'IBKR') {
-      // Submit to IBKR TWS
       const result = await submitToIBKR(order);
       return NextResponse.json(result);
     } else {
@@ -42,31 +42,59 @@ export async function POST(request: NextRequest) {
 }
 
 async function submitToIBKR(order: OrderRequest) {
-  // In real implementation, this would submit to IBKR TWS API
-  
-  try {
-    // Simulate IBKR order submission
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Mock IBKR response
-    const orderId = Math.floor(Math.random() * 10000);
-    
-    return {
-      success: true,
-      orderId: orderId,
-      status: 'SUBMITTED',
-      message: 'Order submitted to IBKR TWS',
-      timestamp: new Date().toISOString(),
-      source: 'IBKR'
-    };
-    
-  } catch (error) {
-    return {
-      success: false,
-      error: 'IBKR order submission failed',
-      fallbackToVirtual: true
-    };
-  }
+  const host = process.env.IBKR_HOST || '127.0.0.1';
+  const port = Number(process.env.IBKR_PORT) || 7497;
+  const clientId = Number(process.env.IBKR_CLIENT_ID) || 0;
+
+  return new Promise(async (resolve) => {
+    const ib = new IBApi({ host, port, clientId });
+
+    ib.once(EventName.error, (err) => {
+      ib.disconnect();
+      resolve({
+        success: false,
+        error: 'IBKR order submission failed',
+        details: String(err),
+        fallbackToVirtual: true,
+      });
+    });
+
+    ib.once(EventName.nextValidId, (id) => {
+      const contract: Contract = {
+        symbol: order.symbol,
+        secType: 'STK',
+        exchange: 'SMART',
+        currency: 'USD',
+      };
+
+      const ibOrder: IBOrder = {
+        action: order.action,
+        orderType: order.orderType === 'LIMIT' ? 'LMT' : order.orderType === 'STOP' ? 'STP' : 'MKT',
+        totalQuantity: order.quantity,
+        lmtPrice: order.price,
+        auxPrice: order.stopPrice,
+      };
+
+      ib.placeOrder(id, contract, ibOrder);
+    });
+
+    ib.once(EventName.orderStatus, (id, status, filled, remaining, avgFillPrice) => {
+      ib.disconnect();
+      resolve({
+        success: true,
+        orderId: id,
+        status,
+        filled,
+        remaining,
+        avgFillPrice,
+        message: 'Order submitted to IBKR TWS',
+        timestamp: new Date().toISOString(),
+        source: 'IBKR',
+      });
+    });
+
+    ib.connect();
+  });
 }
 
 async function simulateVirtualOrder(order: OrderRequest) {

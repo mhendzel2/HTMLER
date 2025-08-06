@@ -136,28 +136,30 @@ export default function WatchlistPage() {
     }
   };
 
-  const addStockToWatchlist = async (ticker: string) => {
-    if (!ticker.trim() || !isValidTicker(ticker)) return;
-    
+  const addStockToWatchlist = async (input: string) => {
+    const tickers = input
+      .split(',')
+      .map(t => t.trim().toUpperCase())
+      .filter(t => isValidTicker(t));
+
+    if (!tickers.length) return;
+
     setAddingStock(true);
     try {
-      const response = await fetch(`/api/watchlist/${activeWatchlist}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ticker: ticker.toUpperCase(),
-        }),
-      });
+      await Promise.all(
+        tickers.map(ticker =>
+          fetch(`/api/watchlist/${activeWatchlist}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ticker }),
+          })
+        )
+      );
 
-      if (response.ok) {
-        setNewTicker('');
-        await fetchWatchlists(); // Refresh the watchlists
-      } else {
-        const error = await response.json();
-        alert(error.error || 'Failed to add stock');
-      }
+      setNewTicker('');
+      await fetchWatchlists(); // Refresh the watchlists
     } catch (error) {
       console.error('Failed to add stock:', error);
       alert('Failed to add stock');
@@ -246,13 +248,13 @@ export default function WatchlistPage() {
           <CardHeader>
             <CardTitle className="text-lg">Add Stock to {currentWatchlist?.name}</CardTitle>
             <CardDescription>
-              Enter a stock ticker to add it to your watchlist
+              Enter stock tickers separated by commas to add them to your watchlist
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex space-x-2">
               <Input
-                placeholder="Enter ticker symbol (e.g., AAPL)"
+                placeholder="Enter ticker symbols (e.g., AAPL, MSFT)"
                 value={newTicker}
                 onChange={(e) => setNewTicker(e.target.value.toUpperCase())}
                 onKeyDown={(e) => {
@@ -262,9 +264,9 @@ export default function WatchlistPage() {
                 }}
                 disabled={addingStock}
               />
-              <Button 
+              <Button
                 onClick={() => addStockToWatchlist(newTicker)}
-                disabled={!newTicker.trim() || !isValidTicker(newTicker) || addingStock}
+                disabled={!newTicker.trim() || !newTicker.split(',').every(t => isValidTicker(t.trim())) || addingStock}
               >
                 {addingStock ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
