@@ -1,1 +1,10 @@
-{}
+{
+  "/api/test-websocket-access/route": "app/api/test-websocket-access/route.js",
+  "/api/market/route": "app/api/market/route.js",
+  "/dashboard/options/page": "app/dashboard/options/page.js",
+  "/dashboard/news/page": "app/dashboard/news/page.js",
+  "/dashboard/shorts/page": "app/dashboard/shorts/page.js",
+  "/dashboard/filters/page": "app/dashboard/filters/page.js",
+  "/dashboard/settings/page": "app/dashboard/settings/page.js",
+  "/dashboard/market/page": "app/dashboard/market/page.js"
+}
