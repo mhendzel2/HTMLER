@@ -1,8 +1,8 @@
 {
-  "/api/options/flow-alerts-poll/route": "app/api/options/flow-alerts-poll/route.js",
-  "/dashboard/websocket-diagnostic/page": "app/dashboard/websocket-diagnostic/page.js",
-  "/dashboard/market/page": "app/dashboard/market/page.js",
-  "/dashboard/options/page": "app/dashboard/options/page.js",
-  "/dashboard/earnings/page": "app/dashboard/earnings/page.js",
-  "/dashboard/watchlist/page": "app/dashboard/watchlist/page.js"
+  "/api/market/route": "app/api/market/route.js",
+  "/api/watchlist/route": "app/api/watchlist/route.js",
+  "/api/options/hottest-chains/route": "app/api/options/hottest-chains/route.js",
+  "/api/watchlist/[id]/route": "app/api/watchlist/[id]/route.js",
+  "/dashboard/watchlist/page": "app/dashboard/watchlist/page.js",
+  "/dashboard/market/page": "app/dashboard/market/page.js"
 }
