@@ -141,19 +141,21 @@ export default function WatchlistPage() {
           let volume = 0;
           if (stateRes.ok) {
             const data = await stateRes.json();
-            price = data.last_price || 0;
-            change = data.change || 0;
-            changePercent = data.change_percent || 0;
-            volume = data.volume || 0;
+            const state = data?.data || data;
+            price = state?.last_price ?? 0;
+            change = state?.change ?? 0;
+            changePercent = state?.change_percent ?? 0;
+            volume = state?.volume ?? 0;
           }
 
           let maxPain: number | undefined;
           let nextExpiry: string | undefined;
           if (maxPainRes.ok) {
             const mp = await maxPainRes.json();
-            if (Array.isArray(mp.data)) {
+            const mpData = mp?.data?.data || mp.data;
+            if (Array.isArray(mpData)) {
               const today = new Date();
-              const upcoming = mp.data
+              const upcoming = mpData
                 .map((d: any) => ({
                   expiry: d.expiry,
                   maxPain: parseFloat(d.max_pain),
@@ -184,8 +186,9 @@ export default function WatchlistPage() {
           let darkpoolPremium: number | undefined;
           if (darkpoolRes.ok) {
             const dp = await darkpoolRes.json();
-            if (Array.isArray(dp.data)) {
-              darkpoolPremium = dp.data.reduce(
+            const dpData = dp?.data?.data || dp.data;
+            if (Array.isArray(dpData)) {
+              darkpoolPremium = dpData.reduce(
                 (sum: number, trade: any) => sum + parseFloat(trade.premium || '0'),
                 0
               );
@@ -195,8 +198,9 @@ export default function WatchlistPage() {
           let oiChange: number | undefined;
           if (oiRes.ok) {
             const oi = await oiRes.json();
-            if (Array.isArray(oi.data)) {
-              oiChange = oi.data.reduce(
+            const oiData = oi?.data?.data || oi.data;
+            if (Array.isArray(oiData)) {
+              oiChange = oiData.reduce(
                 (sum: number, item: any) => sum + (item.oi_diff_plain || 0),
                 0
               );
