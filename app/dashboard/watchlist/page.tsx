@@ -308,10 +308,15 @@ export default function WatchlistPage() {
             </Card>
           ) : (
             currentWatchlist?.items.map(item => {
-              const ticker = item.stock?.ticker || item.ticker || '';
+              // Handle items that may only have a ticker string or lack stock info
+              const ticker = item.stock?.ticker || item.ticker;
+              if (!ticker) {
+                return null;
+              }
+
               const quote = stockQuotes[ticker];
               const isPositive = quote?.change >= 0;
-              
+
               return (
                 <Card key={item.id} className="hover:shadow-lg transition-shadow">
                   <CardContent className="p-6">
