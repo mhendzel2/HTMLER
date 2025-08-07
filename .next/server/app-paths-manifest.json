@@ -1,15 +1,14 @@
 {
-  "/api/news/route": "app/api/news/route.js",
-  "/api/test-websocket-access/route": "app/api/test-websocket-access/route.js",
-  "/api/options/flow-alerts-poll/route": "app/api/options/flow-alerts-poll/route.js",
-  "/api/earnings/route": "app/api/earnings/route.js",
   "/api/market/route": "app/api/market/route.js",
   "/api/options/hottest-chains/route": "app/api/options/hottest-chains/route.js",
-  "/dashboard/news/page": "app/dashboard/news/page.js",
-  "/dashboard/options/page": "app/dashboard/options/page.js",
-  "/dashboard/earnings/page": "app/dashboard/earnings/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
+  "/api/earnings/route": "app/api/earnings/route.js",
+  "/api/test-websocket-access/route": "app/api/test-websocket-access/route.js",
+  "/api/news/route": "app/api/news/route.js",
+  "/dashboard/market/page": "app/dashboard/market/page.js",
   "/dashboard/filters/page": "app/dashboard/filters/page.js",
-  "/dashboard/trading/finbert/page": "app/dashboard/trading/finbert/page.js",
-  "/dashboard/market/page": "app/dashboard/market/page.js"
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/earnings/page": "app/dashboard/earnings/page.js",
+  "/dashboard/congress/page": "app/dashboard/congress/page.js",
+  "/dashboard/news/page": "app/dashboard/news/page.js",
+  "/dashboard/websocket-test/page": "app/dashboard/websocket-test/page.js"
 }
