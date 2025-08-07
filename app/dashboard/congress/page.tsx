@@ -15,7 +15,7 @@ interface CongressTrade {
   id: string;
   ticker: string;
   congress_member: string;
-  transaction_type: string;
+  transaction_type?: string;
   amount: string;
   transaction_date: string;
   disclosure_date: string;
@@ -91,8 +91,9 @@ export default function CongressPage() {
     fetchCongressData();
   };
 
-  const getTransactionTypeColor = (type: string) => {
-    return type.toLowerCase().includes('purchase') || type.toLowerCase().includes('buy')
+  const getTransactionTypeColor = (type?: string | null) => {
+    const normalizedType = type?.toLowerCase() || '';
+    return normalizedType.includes('purchase') || normalizedType.includes('buy')
       ? 'bg-green-100 text-green-800 border-green-200'
       : 'bg-red-100 text-red-800 border-red-200';
   };
