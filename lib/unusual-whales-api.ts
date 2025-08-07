@@ -25,6 +25,9 @@ class UnusualWhalesAPIError extends Error {
 export class UnusualWhalesAPI {
   private static instance: UnusualWhalesAPI;
   private rateLimitDelay = 100; // 10 requests per second
+  private maxConcurrentRequests = parseInt(process.env.UNUSUAL_WHALES_MAX_CONCURRENT || '2', 10);
+  private activeRequests = 0;
+  private queue: Array<() => void> = [];
 
   private constructor() {}
 
@@ -67,13 +70,14 @@ export class UnusualWhalesAPI {
     options: ApiRequestOptions = {}
   ): Promise<T> {
     const { method = 'GET', params, cache = 'default' } = options;
+    await this.acquireSlot();
 
-    // Rate limiting
-    await new Promise(resolve => setTimeout(resolve, this.rateLimitDelay));
-
-    const url = this.buildUrl(endpoint, params);
-    
     try {
+      // Rate limiting between requests
+      await new Promise(resolve => setTimeout(resolve, this.rateLimitDelay));
+
+      const url = this.buildUrl(endpoint, params);
+
       const response = await fetch(url, {
         method,
         headers: this.getHeaders(),
@@ -98,6 +102,23 @@ export class UnusualWhalesAPI {
       throw new UnusualWhalesAPIError(
         `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
+    } finally {
+      this.releaseSlot();
+    }
+  }
+
+  private async acquireSlot(): Promise<void> {
+    if (this.activeRequests >= this.maxConcurrentRequests) {
+      await new Promise<void>(resolve => this.queue.push(resolve));
+    }
+    this.activeRequests++;
+  }
+
+  private releaseSlot(): void {
+    this.activeRequests--;
+    const next = this.queue.shift();
+    if (next) {
+      next();
     }
   }
 
