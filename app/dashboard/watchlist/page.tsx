@@ -74,7 +74,7 @@ export default function WatchlistPage() {
   const fetchWatchlists = async () => {
     setRefreshing(true);
     try {
-      const response = await fetch('/api/watchlist');
+      const response = await fetch('/api/watchlist', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
 
@@ -129,10 +129,10 @@ export default function WatchlistPage() {
       const promises = tickers.map(async (ticker) => {
         try {
           const [stateRes, maxPainRes, darkpoolRes, oiRes] = await Promise.all([
-            fetch(`/api/stocks/${ticker}?type=state`),
-            fetch(`/api/options?type=max-pain&ticker=${ticker}`),
-            fetch(`/api/darkpool/${ticker}`),
-            fetch(`/api/options?type=oi-change&ticker=${ticker}`)
+            fetch(`/api/stocks/${ticker}?type=state`, { cache: 'no-store' }),
+            fetch(`/api/options?type=max-pain&ticker=${ticker}`, { cache: 'no-store' }),
+            fetch(`/api/darkpool/${ticker}`, { cache: 'no-store' }),
+            fetch(`/api/options?type=oi-change&ticker=${ticker}`, { cache: 'no-store' })
           ]);
 
           let price = 0;
@@ -169,7 +169,7 @@ export default function WatchlistPage() {
 
           let atmCallDelta: number | undefined;
           if (nextExpiry) {
-            const greeksRes = await fetch(`/api/options?type=greeks&ticker=${ticker}&expiry=${nextExpiry}`);
+            const greeksRes = await fetch(`/api/options?type=greeks&ticker=${ticker}&expiry=${nextExpiry}`, { cache: 'no-store' });
             if (greeksRes.ok) {
               const gr = await greeksRes.json();
               if (Array.isArray(gr.data) && gr.data.length) {
@@ -277,6 +277,29 @@ export default function WatchlistPage() {
   useEffect(() => {
     fetchWatchlists();
   }, []);
+
+  useEffect(() => {
+    const current = watchlists.find(w => w.id === activeWatchlist);
+    if (current) {
+      const tickers = current.items
+        .map((item: WatchlistItem) => item.stock?.ticker || item.ticker || '')
+        .filter(Boolean);
+      fetchStockQuotes(tickers);
+    }
+  }, [activeWatchlist, watchlists]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const current = watchlists.find(w => w.id === activeWatchlist);
+      if (current) {
+        const tickers = current.items
+          .map((item: WatchlistItem) => item.stock?.ticker || item.ticker || '')
+          .filter(Boolean);
+        fetchStockQuotes(tickers);
+      }
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [activeWatchlist, watchlists]);
 
   const currentWatchlist = (Array.isArray(watchlists) ? watchlists : []).find(w => w.id === activeWatchlist);
 

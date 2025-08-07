@@ -40,10 +40,10 @@ export default function ShortsPage() {
     try {
       setLoading(true);
       const [shortsRes, ftdRes, volumeRes, interestRes] = await Promise.all([
-        fetch(`/api/shorts/${ticker}?type=data`),
-        fetch(`/api/shorts/${ticker}?type=ftds`),
-        fetch(`/api/shorts/${ticker}?type=volume-ratio`),
-        fetch(`/api/shorts/${ticker}?type=interest-float`)
+        fetch(`/api/shorts/${ticker}?type=data`, { cache: 'no-store' }),
+        fetch(`/api/shorts/${ticker}?type=ftds`, { cache: 'no-store' }),
+        fetch(`/api/shorts/${ticker}?type=volume-ratio`, { cache: 'no-store' }),
+        fetch(`/api/shorts/${ticker}?type=interest-float`, { cache: 'no-store' })
       ]);
 
       if (shortsRes.ok) {
