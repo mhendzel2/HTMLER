@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import { watchlists, Watchlist } from './store';
+import { watchlists, Watchlist, saveWatchlists } from './store';
 
 export async function GET() {
   try {
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
     };
 
     watchlists.push(newWatchlist);
+    saveWatchlists();
 
     return NextResponse.json(newWatchlist, { status: 201 });
   } catch (error) {

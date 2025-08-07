@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import { watchlists } from '../../../store';
+import { watchlists, saveWatchlists } from '../../../store';
 
 export async function DELETE(
   request: NextRequest,
@@ -27,6 +27,7 @@ export async function DELETE(
     }
 
     watchlist.items.splice(itemIndex, 1);
+    saveWatchlists();
 
     return NextResponse.json({ success: true });
   } catch (error) {

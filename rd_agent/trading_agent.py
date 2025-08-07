@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import os
 from rdagent.utils.agent.workflow import build_cls_from_json_with_retry
+from model_utils import ensure_model
 
 
 @dataclass
@@ -19,11 +20,15 @@ def main() -> None:
     )
     user_prompt = "Generate a sample trade idea for SPY."
 
+    model_name = os.getenv("CHAT_MODEL", "gpt-oss-20b")
+    local_dir = os.getenv("MODEL_DIR", os.path.join(os.getcwd(), "models", model_name))
+    ensure_model(model_name, local_dir)
+
     idea = build_cls_from_json_with_retry(
         TradeIdea,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        model=os.getenv("CHAT_MODEL", "gpt-oss-20b"),
+        model=model_name,
         base_url=os.getenv("OPENAI_API_BASE", "http://localhost:8000"),
         api_key=os.getenv("OPENAI_API_KEY", "dummy"),
     )
