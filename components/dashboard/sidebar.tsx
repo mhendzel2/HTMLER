@@ -103,6 +103,16 @@ const navigation = [
     icon: Brain,
   },
   {
+    name: 'Flow Alerts',
+    href: '/dashboard/alerts',
+    icon: Activity,
+  },
+  {
+    name: 'Data Stream Test',
+    href: '/dashboard/data-stream-test',
+    icon: Wifi,
+  },
+  {
     name: 'WebSocket Test',
     href: '/dashboard/websocket-test',
     icon: Wifi,
