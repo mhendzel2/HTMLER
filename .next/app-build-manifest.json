@@ -1,9 +1,9 @@
 {
   "pages": {
-    "/dashboard/filters/page": [
+    "/dashboard/websocket-diagnostic/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/filters/page.js"
+      "static/chunks/app/dashboard/websocket-diagnostic/page.js"
     ],
     "/dashboard/layout": [
       "static/chunks/webpack.js",
@@ -15,6 +15,26 @@
       "static/chunks/main-app.js",
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
+    ],
+    "/dashboard/market/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/market/page.js"
+    ],
+    "/dashboard/options/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/options/page.js"
+    ],
+    "/dashboard/earnings/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/earnings/page.js"
+    ],
+    "/dashboard/watchlist/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/watchlist/page.js"
     ]
   }
 }

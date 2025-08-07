@@ -174,37 +174,53 @@ export class TradingFilterSystem {
    * Start real-time monitoring with WebSocket
    */
   async startRealTimeMonitoring(): Promise<boolean> {
+    console.log('🚀 Starting real-time monitoring...');
+    
     // Test WebSocket access
     const wsTest = await unusualWhalesWS.testWebSocketAccess();
+    console.log('🔍 WebSocket access test:', wsTest);
     
     if (!wsTest.hasWebSocketScope) {
-      console.warn('WebSocket not available, falling back to polling');
+      console.warn('⚠️ WebSocket not available, falling back to polling');
       this.startPollingMode();
       return false;
     }
 
     // Connect to WebSocket
+    console.log('🔌 Connecting to WebSocket...');
     const connected = await unusualWhalesWS.connect();
+    console.log('🔌 WebSocket connection result:', connected);
+    
     if (!connected) {
-      console.warn('WebSocket connection failed, falling back to polling');
+      console.warn('⚠️ WebSocket connection failed, falling back to polling');
       this.startPollingMode();
       return false;
     }
 
+    console.log('✅ WebSocket connected successfully - subscribing to channels...');
+
     // Subscribe to flow alerts - this replaces multiple inefficient API calls
     unusualWhalesWS.subscribe('flow-alerts', (data) => {
-      console.log('Received flow alert data:', data);
+      console.log('🚨 RAW WebSocket flow alert received:', JSON.stringify(data, null, 2));
       
+      // Handle WebSocket client wrapper format: { channel, payload, timestamp }
+      if (data.channel === 'flow-alerts' && data.payload) {
+        console.log('📨 Processing WebSocket client wrapper format flow alert');
+        this.processFlowAlert(this.normalizeFlowAlert(data.payload));
+      }
       // Handle WebSocket array format: ["flow-alerts", {...}]
-      if (Array.isArray(data) && data.length === 2 && data[0] === 'flow-alerts') {
+      else if (Array.isArray(data) && data.length === 2 && data[0] === 'flow-alerts') {
+        console.log('📨 Processing WebSocket array format flow alert');
         this.processFlowAlert(this.normalizeFlowAlert(data[1]));
       } 
       // Handle object format with payload
       else if (data.payload) {
+        console.log('📨 Processing WebSocket payload format flow alert');
         this.processFlowAlert(this.normalizeFlowAlert(data.payload));
       }
       // Handle direct flow alert data
       else {
+        console.log('📨 Processing WebSocket direct format flow alert');
         this.processFlowAlert(this.normalizeFlowAlert(data));
       }
     });
@@ -259,21 +275,97 @@ export class TradingFilterSystem {
    * Process incoming flow alert against all active filters
    */
   private processFlowAlert(alert: FlowAlert): void {
-    console.log('Processing flow alert:', alert.ticker, alert.premium, alert.sentiment);
+    console.log('🔍 Processing flow alert:', {
+      ticker: alert.ticker,
+      premium: alert.premium,
+      side: alert.side,
+      type: alert.type,
+      dte: alert.dte,
+      moneyness: alert.moneyness,
+      aggressiveness: alert.aggressiveness,
+      sentiment: alert.sentiment
+    });
+    
+    let matched = 0;
     
     for (const [filterId, filter] of this.activeFilters) {
-      if (!filter.enabled) continue;
+      if (!filter.enabled) {
+        console.log(`❌ Filter ${filter.name} is disabled`);
+        continue;
+      }
+
+      console.log(`🎯 Testing against filter: ${filter.name}`, {
+        criteria: filter.criteria,
+        alert: {
+          premium: alert.premium,
+          dte: alert.dte,
+          side: alert.side,
+          moneyness: alert.moneyness,
+          type: alert.type,
+          size: alert.size,
+          aggressiveness: alert.aggressiveness
+        }
+      });
 
       if (this.matchesFilter(alert, filter.criteria)) {
-        console.log(`Alert matches filter: ${filter.name}`, alert);
+        matched++;
+        console.log(`✅ Alert matches filter: ${filter.name}`, alert);
         
         // Alert matches filter criteria - notify subscribers
         const callback = this.alertSubscriptions.get(filterId);
         if (callback) {
           callback(alert);
         }
+      } else {
+        console.log(`❌ Alert does NOT match filter: ${filter.name}`);
+        this.debugFilterMatch(alert, filter.criteria);
       }
     }
+    
+    console.log(`📊 Alert processed - ${matched} filters matched out of ${this.activeFilters.size} active filters`);
+  }
+
+  /**
+   * Debug why an alert didn't match a filter
+   */
+  private debugFilterMatch(alert: FlowAlert, criteria: FilterCriteria): void {
+    const failures = [];
+    
+    if (criteria.minPremium && alert.premium < criteria.minPremium) {
+      failures.push(`premium ${alert.premium} < ${criteria.minPremium}`);
+    }
+    if (criteria.maxPremium && alert.premium > criteria.maxPremium) {
+      failures.push(`premium ${alert.premium} > ${criteria.maxPremium}`);
+    }
+    if (criteria.minDTE && alert.dte < criteria.minDTE) {
+      failures.push(`DTE ${alert.dte} < ${criteria.minDTE}`);
+    }
+    if (criteria.maxDTE && alert.dte > criteria.maxDTE) {
+      failures.push(`DTE ${alert.dte} > ${criteria.maxDTE}`);
+    }
+    if (criteria.side && criteria.side !== 'both' && alert.side !== criteria.side) {
+      failures.push(`side ${alert.side} != ${criteria.side}`);
+    }
+    if (criteria.moneyness && criteria.moneyness !== 'any' && alert.moneyness !== criteria.moneyness) {
+      failures.push(`moneyness ${alert.moneyness} != ${criteria.moneyness}`);
+    }
+    if (criteria.contractTypes && !criteria.contractTypes.includes(alert.type)) {
+      failures.push(`type ${alert.type} not in ${criteria.contractTypes}`);
+    }
+    if (criteria.minSize && alert.size < criteria.minSize) {
+      failures.push(`size ${alert.size} < ${criteria.minSize}`);
+    }
+    if (criteria.aggressiveness && criteria.aggressiveness !== 'any' && alert.aggressiveness !== criteria.aggressiveness) {
+      failures.push(`aggressiveness ${alert.aggressiveness} != ${criteria.aggressiveness}`);
+    }
+    if (criteria.sweepOnly && alert.aggressiveness !== 'sweep') {
+      failures.push(`not a sweep (${alert.aggressiveness})`);
+    }
+    if (criteria.blockOnly && alert.aggressiveness !== 'block') {
+      failures.push(`not a block (${alert.aggressiveness})`);
+    }
+    
+    console.log(`🚫 Filter match failures:`, failures);
   }
 
   /**
@@ -443,10 +535,13 @@ export class TradingFilterSystem {
    * Normalize flow alert data from WebSocket or API
    */
   private normalizeFlowAlert(raw: any): FlowAlert {
+    console.log('🔄 Normalizing flow alert from raw data:', JSON.stringify(raw, null, 2));
+    
     // Handle WebSocket format: ["flow-alerts", {...}]
     let alertData = raw;
     if (Array.isArray(raw) && raw.length === 2 && raw[0] === 'flow-alerts') {
       alertData = raw[1];
+      console.log('🔄 Extracted from array format:', alertData);
     }
 
     // Extract option details from contract ID
@@ -455,6 +550,8 @@ export class TradingFilterSystem {
     let strike = alertData.strike;
     let expiry = alertData.expiry;
     let type: 'call' | 'put' = alertData.type || 'call';
+
+    console.log('🔄 Initial extraction:', { contractId, ticker, strike, expiry, type });
 
     // Parse contract ID if available (format: TICKER241018C00415000)
     if (contractId && !ticker) {
@@ -470,6 +567,8 @@ export class TradingFilterSystem {
         const month = parseInt(dateStr.substring(2, 4));
         const day = parseInt(dateStr.substring(4, 6));
         expiry = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        
+        console.log('🔄 Parsed from contract ID:', { ticker, type, strike, expiry });
       }
     }
 
@@ -478,23 +577,32 @@ export class TradingFilterSystem {
     const size = alertData.total_size || alertData.size || 0;
     const price = alertData.price || 0;
 
-    return {
+    const side = this.determineSide(alertData);
+    const dte = expiry ? this.calculateDTE(expiry) : 0;
+    const moneyness = this.calculateMoneyness({ strike, underlying_price: underlyingPrice, type });
+    const aggressiveness = this.determineAggressiveness(alertData);
+    const sentiment = this.calculateSentiment({ type, side });
+
+    const normalizedAlert = {
       ticker: ticker || 'UNKNOWN',
       contractId: contractId || '',
       strike: strike || 0,
       expiry: expiry || '',
       type,
-      side: this.determineSide(alertData),
+      side,
       premium,
       size,
       price,
       underlying_price: underlyingPrice,
       timestamp: alertData.executed_at || alertData.timestamp || Date.now(),
-      dte: expiry ? this.calculateDTE(expiry) : 0,
-      moneyness: this.calculateMoneyness({ strike, underlying_price: underlyingPrice, type }),
-      aggressiveness: this.determineAggressiveness(alertData),
-      sentiment: this.calculateSentiment({ type, side: this.determineSide(alertData) })
+      dte,
+      moneyness,
+      aggressiveness,
+      sentiment
     };
+
+    console.log('✅ Normalized flow alert:', normalizedAlert);
+    return normalizedAlert;
   }
 
   /**

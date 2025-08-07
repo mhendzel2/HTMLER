@@ -28,6 +28,7 @@ import {
   type GEXData 
 } from '@/lib/trading-filters';
 import { unusualWhalesWS } from '@/lib/websocket-client';
+import { injectMockFlowAlerts, testBigMoneyFilter, testDarkPoolFilter, testAggressiveShortTermFilter, testSmallAlert } from '@/lib/mock-flow-alerts';
 
 interface FilterAlert {
   filter: BigMoneyFilter;
@@ -209,6 +210,109 @@ export default function TradingFiltersPanel() {
                 {filters.filter(f => f.enabled).length}
               </div>
               <div className="text-sm text-muted-foreground">Active Filters</div>
+            </div>
+          </div>
+          
+          {/* Debug Section */}
+          <div className="mt-4 p-3 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+            <div className="text-sm font-medium text-gray-600 mb-2">🧪 Debug & Testing</div>
+            <div className="flex flex-wrap gap-2">
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => {
+                  console.log('🔴 BUTTON CLICKED: Simple test');
+                  alert('Simple test button works!');
+                }}
+                className="text-xs"
+              >
+                Test Button Click
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => {
+                  console.log('🔴 Inject Mock Alerts button clicked!');
+                  alert('Testing Inject Mock Alerts - check console');
+                  try {
+                    injectMockFlowAlerts();
+                  } catch (error) {
+                    console.error('Error calling injectMockFlowAlerts:', error);
+                    alert('Error: ' + error);
+                  }
+                }}
+                className="text-xs"
+              >
+                Inject Mock Alerts
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => {
+                  console.log('🔴 Test Big Money button clicked!');
+                  alert('Testing Big Money Filter - check console');
+                  try {
+                    testBigMoneyFilter();
+                  } catch (error) {
+                    console.error('Error calling testBigMoneyFilter:', error);
+                    alert('Error: ' + error);
+                  }
+                }}
+                className="text-xs"
+              >
+                Test Big Money ($750K)
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => {
+                  console.log('🔴 Test Dark Pool button clicked!');
+                  alert('Testing Dark Pool Filter - check console');
+                  try {
+                    testDarkPoolFilter();
+                  } catch (error) {
+                    console.error('Error calling testDarkPoolFilter:', error);
+                    alert('Error: ' + error);
+                  }
+                }}
+                className="text-xs"
+              >
+                Test Dark Pool ($300K)
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => {
+                  console.log('🔴 Test Short-Term button clicked!');
+                  alert('Testing Short-Term Filter - check console');
+                  try {
+                    testAggressiveShortTermFilter();
+                  } catch (error) {
+                    console.error('Error calling testAggressiveShortTermFilter:', error);
+                    alert('Error: ' + error);
+                  }
+                }}
+                className="text-xs"
+              >
+                Test Short-Term ($150K)
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => {
+                  console.log('🔴 Test Small Alert button clicked!');
+                  alert('Testing Small Alert - check console');
+                  try {
+                    testSmallAlert();
+                  } catch (error) {
+                    console.error('Error calling testSmallAlert:', error);
+                    alert('Error: ' + error);
+                  }
+                }}
+                className="text-xs"
+              >
+                Test Small Alert ($25K)
+              </Button>
             </div>
           </div>
         </CardContent>

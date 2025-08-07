@@ -139,3 +139,9 @@
     @apply w-full;
   }
 }
+
+/* Volume bar utility for dynamic widths */
+.volume-bar {
+  transition: width 0.3s ease-in-out;
+  width: var(--volume-width, 0%);
+}
