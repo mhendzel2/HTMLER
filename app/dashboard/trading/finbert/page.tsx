@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { analyzeSentiment } from '@/lib/finbert-local';
 import { Header } from '@/components/dashboard/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -78,21 +79,25 @@ export default function FinBERTAnalysisPage() {
   };
 
   const loadSentimentData = async () => {
-    // Simulate loading sentiment data for popular symbols
     const popularSymbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'AMZN', 'NVDA', 'META'];
-    
-    const mockSentimentData: SentimentAnalysis[] = popularSymbols.map(symbol => ({
-      symbol,
-      sentiment: Math.random() > 0.6 ? 'bullish' : Math.random() > 0.3 ? 'bearish' : 'neutral',
-      confidence: Math.floor(Math.random() * 30) + 70, // 70-100%
-      score: (Math.random() - 0.5) * 2, // -1 to +1
-      headlines: generateMockHeadlines(symbol),
-      lastUpdated: new Date().toISOString(),
-      tradingSignal: Math.random() > 0.6 ? 'BUY' : Math.random() > 0.3 ? 'SELL' : 'HOLD',
-      riskLevel: Math.random() > 0.7 ? 'HIGH' : Math.random() > 0.4 ? 'MEDIUM' : 'LOW'
-    }));
 
-    setSentimentData(mockSentimentData);
+    const analyses: SentimentAnalysis[] = [];
+    for (const symbol of popularSymbols) {
+      const result = await analyzeSentiment(`${symbol} stock`);
+      const label = result[0]?.label?.toLowerCase() || 'neutral';
+      analyses.push({
+        symbol,
+        sentiment: label === 'positive' ? 'bullish' : label === 'negative' ? 'bearish' : 'neutral',
+        confidence: Math.floor(result[0]?.score * 100) || 0,
+        score: result[0]?.score || 0,
+        headlines: generateMockHeadlines(symbol),
+        lastUpdated: new Date().toISOString(),
+        tradingSignal: label === 'positive' ? 'BUY' : label === 'negative' ? 'SELL' : 'HOLD',
+        riskLevel: label === 'positive' || label === 'negative' ? 'MEDIUM' : 'LOW',
+      });
+    }
+
+    setSentimentData(analyses);
   };
 
   const generateMockHeadlines = (symbol: string): NewsHeadline[] => {

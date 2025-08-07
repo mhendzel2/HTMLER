@@ -20,7 +20,8 @@ interface WatchlistData {
 
 interface WatchlistItem {
   id: string;
-  stock: {
+  ticker?: string;
+  stock?: {
     ticker: string;
     companyName?: string;
     sector?: string;
@@ -85,9 +86,9 @@ export default function WatchlistPage() {
         }
         
         // Fetch quotes for all stocks
-        const allTickers = watchlistArray.flatMap((w: WatchlistData) => 
-          w.items.map((item: WatchlistItem) => item.stock.ticker)
-        );
+        const allTickers = watchlistArray.flatMap((w: WatchlistData) =>
+          w.items.map((item: WatchlistItem) => item.stock?.ticker || item.ticker || '')
+        ).filter(Boolean);
         await fetchStockQuotes(allTickers);
       }
     } catch (error) {
@@ -95,6 +96,21 @@ export default function WatchlistPage() {
     } finally {
       setRefreshing(false);
       setLoading(false);
+    }
+  };
+
+  const createWatchlist = async () => {
+    const name = prompt('Enter a name for the new watchlist');
+    if (!name) return;
+    try {
+      await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      await fetchWatchlists();
+    } catch (error) {
+      console.error('Failed to create watchlist:', error);
     }
   };
 
@@ -233,10 +249,10 @@ export default function WatchlistPage() {
             ))}
           </div>
           
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
-            onClick={() => alert('Create new watchlist functionality coming soon!')}
+            onClick={createWatchlist}
           >
             <Plus className="h-4 w-4 mr-2" />
             New Watchlist
@@ -292,9 +308,15 @@ export default function WatchlistPage() {
             </Card>
           ) : (
             currentWatchlist?.items.map(item => {
-              const quote = stockQuotes[item.stock.ticker];
+              // Handle items that may only have a ticker string or lack stock info
+              const ticker = item.stock?.ticker || item.ticker;
+              if (!ticker) {
+                return null;
+              }
+
+              const quote = stockQuotes[ticker];
               const isPositive = quote?.change >= 0;
-              
+
               return (
                 <Card key={item.id} className="hover:shadow-lg transition-shadow">
                   <CardContent className="p-6">
@@ -302,16 +324,18 @@ export default function WatchlistPage() {
                       <div className="flex items-center space-x-4">
                         <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
                           <span className="font-bold text-blue-600 dark:text-blue-400">
-                            {item.stock.ticker}
+                            {ticker}
                           </span>
                         </div>
                         
                         <div>
-                          <h3 className="font-semibold text-lg">{item.stock.ticker}</h3>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            {item.stock.companyName || 'Loading...'}
-                          </p>
-                          {item.stock.sector && (
+                          <h3 className="font-semibold text-lg">{ticker}</h3>
+                          {item.stock?.companyName && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              {item.stock.companyName}
+                            </p>
+                          )}
+                          {item.stock?.sector && (
                             <Badge variant="outline" className="mt-1">
                               {item.stock.sector}
                             </Badge>
