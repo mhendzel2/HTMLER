@@ -1,0 +1,9 @@
+[
+  {
+    "id": "1",
+    "name": "Default Watchlist",
+    "description": "My main watchlist",
+    "isDefault": true,
+    "items": []
+  }
+]

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import { watchlists, WatchlistItem } from '../store';
+import { watchlists, WatchlistItem, saveWatchlists } from '../store';
 
 export async function GET(
   request: NextRequest,
@@ -42,6 +42,7 @@ export async function DELETE(
     }
 
     watchlists.splice(index, 1);
+    saveWatchlists();
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -93,6 +94,7 @@ export async function POST(
     };
 
     watchlist.items.push(newItem);
+    saveWatchlists();
 
     return NextResponse.json(newItem, { status: 201 });
   } catch (error) {
