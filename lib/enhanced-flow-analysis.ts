@@ -35,24 +35,20 @@ export class EnhancedFlowAnalysisService {
     this.isMonitoring = true;
     tickers.forEach(ticker => this.monitoringTickers.add(ticker));
 
-    // With confirmed WebSocket access, enable ALL real-time streams
+    // Attempt to start real-time monitoring via WebSocket
     const success = await tradingFilters.startRealTimeMonitoring();
+
+    // Subscribe to ALL high-value filters for maximum earnings insight
+    const alertHandler = (alert: FlowAlert) => {
+      this.processEarningsAlert(alert, tickers);
+    };
+
+    tradingFilters.subscribeToFilter('big-money-otm', alertHandler);
+    tradingFilters.subscribeToFilter('dark-pool-correlation', alertHandler);
+    tradingFilters.subscribeToFilter('aggressive-short-term', alertHandler);
 
     if (success) {
       console.log('✅ FULL WebSocket access confirmed - enabling ALL institutional-grade filters!');
-
-      // Subscribe to ALL high-value filters for maximum earnings insight
-      tradingFilters.subscribeToFilter('big-money-otm-whales', (alert) => {
-        this.processEarningsAlert(alert, tickers);
-      });
-
-      tradingFilters.subscribeToFilter('dark-pool-correlation', (alert) => {
-        this.processEarningsAlert(alert, tickers);
-      });
-
-      tradingFilters.subscribeToFilter('aggressive-short-term', (alert) => {
-        this.processEarningsAlert(alert, tickers);
-      });
 
       // Enable real-time GEX monitoring for gamma squeeze detection
       tickers.forEach(ticker => {

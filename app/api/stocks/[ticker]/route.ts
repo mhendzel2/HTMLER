@@ -20,6 +20,22 @@ export async function GET(
       case 'state':
         data = await unusualWhalesAPI.getStockState(params.ticker);
         break;
+      case 'ohlc':
+        const candleSize = searchParams.get('candle_size') || '1d';
+        const date = searchParams.get('date') || undefined;
+        const endDate = searchParams.get('end_date') || undefined;
+        const limitParam = searchParams.get('limit');
+        const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+        const timeframe = searchParams.get('timeframe') || undefined;
+        data = await unusualWhalesAPI.getStockOHLC(
+          params.ticker,
+          candleSize,
+          date,
+          endDate,
+          limit,
+          timeframe
+        );
+        break;
       default:
         return NextResponse.json({ error: 'Invalid type parameter' }, { status: 400 });
     }

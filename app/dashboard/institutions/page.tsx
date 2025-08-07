@@ -120,8 +120,9 @@ export default function InstitutionsPage() {
     return 'text-gray-600';
   };
 
-  const getActionColor = (action: string) => {
-    switch (action.toLowerCase()) {
+  const getActionColor = (action?: string) => {
+    const normalized = action?.toLowerCase();
+    switch (normalized) {
       case 'buy':
       case 'increase':
         return 'bg-green-100 text-green-800 border-green-200';

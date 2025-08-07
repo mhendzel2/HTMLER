@@ -35,6 +35,11 @@ interface StockQuote {
   change: number;
   changePercent: number;
   volume: number;
+  maxPain?: number;
+  nextExpiry?: string;
+  darkpoolPremium?: number;
+  oiChange?: number;
+  atmCallDelta?: number;
 }
 
 // Utility functions
@@ -69,7 +74,7 @@ export default function WatchlistPage() {
   const fetchWatchlists = async () => {
     setRefreshing(true);
     try {
-      const response = await fetch('/api/watchlist');
+      const response = await fetch('/api/watchlist', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
 
@@ -120,27 +125,102 @@ export default function WatchlistPage() {
     try {
       // Fetch real stock data from API
       const quotes: Record<string, StockQuote> = {};
-      
-      // Fetch data for each ticker
+
       const promises = tickers.map(async (ticker) => {
         try {
-          const response = await fetch(`/api/stocks/${ticker}?type=state`);
-          if (response.ok) {
-            const data = await response.json();
-            // Map API response to our StockQuote interface
-            if (data) {
-              quotes[ticker] = {
-                ticker: ticker,
-                price: data.last_price || 0,
-                change: data.change || 0,
-                changePercent: data.change_percent || 0,
-                volume: data.volume || 0,
-              };
+          const [stateRes, maxPainRes, darkpoolRes, oiRes] = await Promise.all([
+            fetch(`/api/stocks/${ticker}?type=state`, { cache: 'no-store' }),
+            fetch(`/api/options?type=max-pain&ticker=${ticker}`, { cache: 'no-store' }),
+            fetch(`/api/darkpool/${ticker}`, { cache: 'no-store' }),
+            fetch(`/api/options?type=oi-change&ticker=${ticker}`, { cache: 'no-store' })
+          ]);
+
+          let price = 0;
+          let change = 0;
+          let changePercent = 0;
+          let volume = 0;
+          if (stateRes.ok) {
+            const data = await stateRes.json();
+            const state = data?.data || data;
+            price = state?.last_price ?? 0;
+            change = state?.change ?? 0;
+            changePercent = state?.change_percent ?? 0;
+            volume = state?.volume ?? 0;
+          }
+
+          let maxPain: number | undefined;
+          let nextExpiry: string | undefined;
+          if (maxPainRes.ok) {
+            const mp = await maxPainRes.json();
+            const mpData = mp?.data?.data || mp.data;
+            if (Array.isArray(mpData)) {
+              const today = new Date();
+              const upcoming = mpData
+                .map((d: any) => ({
+                  expiry: d.expiry,
+                  maxPain: parseFloat(d.max_pain),
+                }))
+                .filter((d: any) => !isNaN(new Date(d.expiry).getTime()) && new Date(d.expiry) >= today)
+                .sort((a: any, b: any) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
+              if (upcoming.length) {
+                nextExpiry = upcoming[0].expiry;
+                maxPain = upcoming[0].maxPain;
+              }
             }
           }
+
+          let atmCallDelta: number | undefined;
+          if (nextExpiry) {
+            const greeksRes = await fetch(`/api/options?type=greeks&ticker=${ticker}&expiry=${nextExpiry}`, { cache: 'no-store' });
+            if (greeksRes.ok) {
+              const gr = await greeksRes.json();
+              if (Array.isArray(gr.data) && gr.data.length) {
+                const closest = gr.data.reduce((prev: any, curr: any) => {
+                  return Math.abs(parseFloat(curr.strike) - price) < Math.abs(parseFloat(prev.strike) - price) ? curr : prev;
+                });
+                atmCallDelta = parseFloat(closest.call_delta);
+              }
+            }
+          }
+
+          let darkpoolPremium: number | undefined;
+          if (darkpoolRes.ok) {
+            const dp = await darkpoolRes.json();
+            const dpData = dp?.data?.data || dp.data;
+            if (Array.isArray(dpData)) {
+              darkpoolPremium = dpData.reduce(
+                (sum: number, trade: any) => sum + parseFloat(trade.premium || '0'),
+                0
+              );
+            }
+          }
+
+          let oiChange: number | undefined;
+          if (oiRes.ok) {
+            const oi = await oiRes.json();
+            const oiData = oi?.data?.data || oi.data;
+            if (Array.isArray(oiData)) {
+              oiChange = oiData.reduce(
+                (sum: number, item: any) => sum + (item.oi_diff_plain || 0),
+                0
+              );
+            }
+          }
+
+          quotes[ticker] = {
+            ticker,
+            price,
+            change,
+            changePercent,
+            volume,
+            maxPain,
+            nextExpiry,
+            darkpoolPremium,
+            oiChange,
+            atmCallDelta,
+          };
         } catch (error) {
           console.error(`Failed to fetch quote for ${ticker}:`, error);
-          // Don't add mock data - leave blank to show no data available
         }
       });
 
@@ -201,6 +281,29 @@ export default function WatchlistPage() {
   useEffect(() => {
     fetchWatchlists();
   }, []);
+
+  useEffect(() => {
+    const current = watchlists.find(w => w.id === activeWatchlist);
+    if (current) {
+      const tickers = current.items
+        .map((item: WatchlistItem) => item.stock?.ticker || item.ticker || '')
+        .filter(Boolean);
+      fetchStockQuotes(tickers);
+    }
+  }, [activeWatchlist, watchlists]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const current = watchlists.find(w => w.id === activeWatchlist);
+      if (current) {
+        const tickers = current.items
+          .map((item: WatchlistItem) => item.stock?.ticker || item.ticker || '')
+          .filter(Boolean);
+        fetchStockQuotes(tickers);
+      }
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [activeWatchlist, watchlists]);
 
   const currentWatchlist = (Array.isArray(watchlists) ? watchlists : []).find(w => w.id === activeWatchlist);
 
@@ -349,7 +452,7 @@ export default function WatchlistPage() {
                             <p className="text-sm text-gray-500">Price</p>
                             <p className="text-2xl font-bold">{formatCurrency(quote.price)}</p>
                           </div>
-                          
+
                           <div className="text-right">
                             <p className="text-sm text-gray-500">Change</p>
                             <div className={`flex items-center space-x-1 ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
@@ -363,11 +466,39 @@ export default function WatchlistPage() {
                               </span>
                             </div>
                           </div>
-                          
+
                           <div className="text-right">
                             <p className="text-sm text-gray-500">Volume</p>
                             <p className="font-semibold">{(quote.volume / 1000000).toFixed(1)}M</p>
                           </div>
+
+                          {quote.oiChange !== undefined && (
+                            <div className="text-right">
+                              <p className="text-sm text-gray-500">OI Δ</p>
+                              <p className="font-semibold">{quote.oiChange.toLocaleString()}</p>
+                            </div>
+                          )}
+
+                          {quote.darkpoolPremium !== undefined && (
+                            <div className="text-right">
+                              <p className="text-sm text-gray-500">Darkpool</p>
+                              <p className="font-semibold">{formatCurrency(quote.darkpoolPremium)}</p>
+                            </div>
+                          )}
+
+                          {quote.atmCallDelta !== undefined && (
+                            <div className="text-right">
+                              <p className="text-sm text-gray-500">ATM Δ</p>
+                              <p className="font-semibold">{quote.atmCallDelta.toFixed(2)}</p>
+                            </div>
+                          )}
+
+                          {quote.maxPain !== undefined && quote.nextExpiry && (
+                            <div className="text-right">
+                              <p className="text-sm text-gray-500">Max Pain ({quote.nextExpiry})</p>
+                              <p className="font-semibold">{formatCurrency(quote.maxPain)}</p>
+                            </div>
+                          )}
                         </div>
                       )}
                       

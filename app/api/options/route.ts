@@ -21,7 +21,12 @@ export async function GET(request: NextRequest) {
         data = await unusualWhalesAPI.getStockFlowAlerts(ticker, true, true, 50);
         break;
       case 'greeks':
-        data = await unusualWhalesAPI.getStockGreeks(ticker);
+        const expiry = searchParams.get('expiry');
+        const greeksDate = searchParams.get('date');
+        if (!expiry) {
+          return NextResponse.json({ error: 'Expiry parameter is required for greeks' }, { status: 400 });
+        }
+        data = await unusualWhalesAPI.getStockGreeks(ticker, expiry, greeksDate || undefined);
         break;
       case 'oi-per-strike':
         data = await unusualWhalesAPI.getStockOIPerStrike(ticker);
@@ -32,6 +37,17 @@ export async function GET(request: NextRequest) {
       case 'net-prem-ticks':
         const date = searchParams.get('date');
         data = await unusualWhalesAPI.getStockNetPremTicks(ticker, date || undefined);
+        break;
+      case 'oi-change':
+        const oiDate = searchParams.get('date') || undefined;
+        const limit = searchParams.get('limit');
+        const order = searchParams.get('order') as 'asc' | 'desc' | null;
+        data = await unusualWhalesAPI.getStockOIChange(
+          ticker,
+          oiDate,
+          limit ? parseInt(limit, 10) : undefined,
+          order || undefined
+        );
         break;
       case 'flow-alerts':
         data = await unusualWhalesAPI.getStockFlowAlerts(ticker, true, true, 50);

@@ -186,8 +186,41 @@ export class UnusualWhalesAPI {
     return this.getStockFlowAlerts(ticker, true, true, 50);
   }
 
-  async getStockGreeks(ticker: string) {
-    return this.makeRequest(`/stock/${ticker}/greeks`);
+  async getStockGreeks(ticker: string, expiry: string, date?: string) {
+    const params: Record<string, string> = { expiry };
+    if (date) params.date = date;
+    return this.makeRequest(`/stock/${ticker}/greeks`, { params });
+  }
+
+  async getDarkpoolTrades(ticker: string, date?: string, limit?: number) {
+    const params: Record<string, any> = {};
+    if (date) params.date = date;
+    if (limit !== undefined) params.limit = limit;
+    return this.makeRequest(`/darkpool/${ticker}`, { params });
+  }
+
+  async getStockOIChange(ticker: string, date?: string, limit?: number, order?: 'desc' | 'asc') {
+    const params: Record<string, any> = {};
+    if (date) params.date = date;
+    if (limit !== undefined) params.limit = limit;
+    if (order) params.order = order;
+    return this.makeRequest(`/stock/${ticker}/oi-change`, { params });
+  }
+
+  async getStockOHLC(
+    ticker: string,
+    candleSize: string,
+    date?: string,
+    endDate?: string,
+    limit?: number,
+    timeframe?: string
+  ) {
+    const params: Record<string, any> = {};
+    if (date) params.date = date;
+    if (endDate) params.end_date = endDate;
+    if (limit !== undefined) params.limit = limit;
+    if (timeframe) params.timeframe = timeframe;
+    return this.makeRequest(`/stock/${ticker}/ohlc/${candleSize}`, { params });
   }
 
   async getStockOIPerStrike(ticker: string) {

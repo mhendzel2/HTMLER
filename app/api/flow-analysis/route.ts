@@ -35,18 +35,8 @@ export async function GET(request: NextRequest) {
       const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(Boolean);
       const analyses = await flowAnalysisService.analyzeBatch(tickerList);
 
-      // Filter for rapid changes in gamma or delta flow
-      const GAMMA_THRESHOLD = 1000;
-      const DELTA_THRESHOLD = 100000; // $100k
-      const filtered: Record<string, typeof analyses[keyof typeof analyses]> = {};
-      Object.entries(analyses).forEach(([t, data]) => {
-        if (Math.abs(data.metrics.gamma_exposure) >= GAMMA_THRESHOLD ||
-            Math.abs(data.metrics.delta_flow) >= DELTA_THRESHOLD) {
-          filtered[t] = data;
-        }
-      });
-
-      return NextResponse.json({ data: filtered });
+      // Return all analyses so the UI can display available data
+      return NextResponse.json({ data: analyses });
     }
   } catch (error) {
     console.error('Flow analysis API error:', error);
