@@ -823,6 +823,9 @@ video {
 .ml-4 {
   margin-left: 1rem;
 }
+.ml-6 {
+  margin-left: 1.5rem;
+}
 .ml-auto {
   margin-left: auto;
 }

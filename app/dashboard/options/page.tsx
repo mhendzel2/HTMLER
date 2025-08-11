@@ -6,8 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatVolume, formatPercent } from '@/lib/utils';
-import { Activity, TrendingUp, AlertTriangle, Eye, Filter, Wifi, WifiOff, Radio } from 'lucide-react';
-import { unusualWhalesWS } from '@/lib/websocket-client';
+import { Activity, TrendingUp, AlertTriangle, Eye, Filter, Radio, WifiOff } from 'lucide-react';
 
 interface OptionsActivity {
   ticker: string;
@@ -37,8 +36,7 @@ export default function OptionsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [optionsData, setOptionsData] = useState<OptionsActivity[]>([]);
   const [filter, setFilter] = useState<'all' | 'unusual' | 'calls' | 'puts'>('all');
-  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'polling'>('connecting');
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'polling'>('connecting');
   const cleanupRef = useRef<(() => void) | null>(null);
   const [advancedFilters, setAdvancedFilters] = useState({
     minimumPremium: 100000,
@@ -51,75 +49,59 @@ export default function OptionsPage() {
   const fetchOptionsData = async () => {
     setRefreshing(true);
     try {
-      // First try to connect to WebSocket for real-time data
-      const wsConnected = await unusualWhalesWS.connect();
-      
-      if (wsConnected) {
-        setConnectionStatus('connected');
-        setIsWebSocketConnected(true);
-        
-        // Subscribe to flow alerts
-        unusualWhalesWS.subscribeToFlowAlerts((alert) => {
-          const newActivity: OptionsActivity = {
-            ticker: alert.ticker,
-            option_symbol: alert.option_chain,
-            underlying_symbol: alert.ticker,
-            option_type: alert.option_chain.includes('C') ? 'CALL' : 'PUT',
-            strike: parseFloat(alert.option_chain.match(/\d+/)?.[0] || '0') / 1000,
-            expiry: new Date().toISOString().split('T')[0], // Simplified for now
-            volume: alert.volume,
-            open_interest: alert.open_interest,
-            premium: alert.total_premium,
-            price: alert.price,
-            implied_volatility: 0, // Not provided in flow alerts
-            unusual_activity: true, // All flow alerts are unusual by definition
-            timestamp: new Date(alert.executed_at).toISOString(),
-            executed_at: alert.executed_at,
-            size: alert.total_size,
-            tags: [alert.rule_name],
-          };
-          
-          setOptionsData(prev => [newActivity, ...prev.slice(0, 99)]); // Keep last 100
-        }, advancedFilters.volumeThreshold);
-        
-      } else {
-        // Fallback to polling
-        setConnectionStatus('polling');
-        setIsWebSocketConnected(false);
-        
-        const cleanup = unusualWhalesWS.startFlowAlertsPolling((alerts) => {
-          const newActivities = alerts.map((alert): OptionsActivity => ({
-            ticker: alert.ticker,
-            option_symbol: alert.option_chain,
-            underlying_symbol: alert.ticker,
-            option_type: alert.option_chain.includes('C') ? 'CALL' : 'PUT',
-            strike: parseFloat(alert.option_chain.match(/\d+/)?.[0] || '0') / 1000,
-            expiry: new Date().toISOString().split('T')[0],
-            volume: alert.volume,
-            open_interest: alert.open_interest,
-            premium: alert.total_premium,
-            price: alert.price,
-            implied_volatility: 0,
+      setConnectionStatus('polling');
+      const tickers = ['AAPL','TSLA','NVDA','AMD','MSFT','SPY','QQQ','IWM','GLD','TLT'];
+      let allActivities: OptionsActivity[] = [];
+      for (const ticker of tickers) {
+        try {
+          const resp = await fetch(`/api/alerts/flow?symbols=${ticker}&limit=50`);
+          if (!resp.ok) {
+            if (resp.status === 404) {
+              console.warn(`No data for ${ticker} (404)`);
+              continue;
+            } else {
+              console.error(`Failed to fetch alerts for ${ticker}: ${resp.status}`);
+              continue;
+            }
+          }
+          const data = await resp.json();
+          const newActivities = (data.data || []).map((alert: any): OptionsActivity => ({
+            ticker: alert.ticker || alert.underlying_ticker,
+            option_symbol: alert.option_symbol || `${alert.ticker || alert.underlying_ticker}_${alert.strike}_${alert.expiry}_${alert.type?.toUpperCase()}`,
+            underlying_symbol: alert.ticker || alert.underlying_ticker,
+            option_type: alert.type?.toUpperCase() || (alert.option_symbol?.includes('C') ? 'CALL' : 'PUT'),
+            strike: alert.strike || parseFloat(alert.option_symbol?.match(/\d+/)?.[0] || '0'),
+            expiry: alert.expiry || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            volume: alert.volume || alert.size || 0,
+            open_interest: alert.open_interest || 0,
+            premium: alert.premium || alert.total_premium || 0,
+            price: alert.price || alert.option_price || 0,
+            implied_volatility: alert.implied_volatility || 0,
             unusual_activity: true,
-            timestamp: new Date(alert.executed_at).toISOString(),
-            executed_at: alert.executed_at,
-            size: alert.total_size,
-            tags: [alert.rule_name],
+            timestamp: alert.timestamp ? new Date(alert.timestamp).toISOString() : new Date().toISOString(),
+            executed_at: alert.timestamp || Date.now(),
+            size: alert.size || alert.volume || 0,
+            tags: alert.tags || [alert.rule_name || 'Flow Alert'],
+            delta: alert.delta || 0,
+            theta: alert.theta || 0,
           }));
-          
-          setOptionsData(prev => {
-            const combined = [...newActivities, ...prev];
-            // Remove duplicates based on id and keep only recent 100
-            const unique = combined.filter((item, index, self) => 
-              self.findIndex(i => i.option_symbol === item.option_symbol && i.executed_at === item.executed_at) === index
-            );
-            return unique.slice(0, 100);
-          });
-        }, advancedFilters.volumeThreshold);
-        
-        cleanupRef.current = cleanup;
+          // Filter by volume threshold if set
+          const filteredActivities = newActivities.filter((activity: OptionsActivity) => 
+            activity.volume >= (advancedFilters.volumeThreshold || 0)
+          );
+          allActivities = [...allActivities, ...filteredActivities];
+        } catch (err) {
+          console.error(`Error fetching data for ${ticker}:`, err);
+        }
       }
-      
+      setOptionsData(prev => {
+        const combined = [...allActivities, ...prev];
+        // Remove duplicates and keep only recent 100
+        const unique = combined.filter((item, index, self) => 
+          self.findIndex(i => i.option_symbol === item.option_symbol && i.executed_at === item.executed_at) === index
+        );
+        return unique.slice(0, 100);
+      });
     } catch (error) {
       console.error('Failed to fetch options data:', error);
       setConnectionStatus('polling');
@@ -138,7 +120,6 @@ export default function OptionsPage() {
       if (cleanupRef.current) {
         cleanupRef.current();
       }
-      unusualWhalesWS.disconnect();
     };
   }, []);
 
@@ -148,7 +129,7 @@ export default function OptionsPage() {
       if (cleanupRef.current) {
         cleanupRef.current();
       }
-      unusualWhalesWS.disconnect();
+      // No WebSocket disconnect needed
       fetchOptionsData();
     }
   }, [advancedFilters.volumeThreshold]);
@@ -187,8 +168,7 @@ export default function OptionsPage() {
 
   const getConnectionStatusIcon = () => {
     switch (connectionStatus) {
-      case 'connected':
-        return <Wifi className="h-4 w-4 text-green-600" />;
+      // No WebSocket icon needed
       case 'polling':
         return <WifiOff className="h-4 w-4 text-orange-600" />;
       default:
@@ -198,8 +178,7 @@ export default function OptionsPage() {
 
   const getConnectionStatusText = () => {
     switch (connectionStatus) {
-      case 'connected':
-        return 'WebSocket Connected';
+      // No WebSocket status needed
       case 'polling':
         return 'Polling Mode';
       default:
@@ -235,11 +214,6 @@ export default function OptionsPage() {
               <div className="flex items-center space-x-2">
                 {getConnectionStatusIcon()}
                 <span className="font-medium">{getConnectionStatusText()}</span>
-                {connectionStatus === 'connected' && (
-                  <Badge variant="default" className="bg-green-100 text-green-800">
-                    Real-time
-                  </Badge>
-                )}
                 {connectionStatus === 'polling' && (
                   <Badge variant="secondary" className="bg-orange-100 text-orange-800">
                     5s updates
