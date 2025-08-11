@@ -1,13 +1,1 @@
-{
-  "/api/options/route": "app/api/options/route.js",
-  "/api/watchlist/route": "app/api/watchlist/route.js",
-  "/api/stocks/[ticker]/route": "app/api/stocks/[ticker]/route.js",
-  "/api/market/route": "app/api/market/route.js",
-  "/api/darkpool/[ticker]/route": "app/api/darkpool/[ticker]/route.js",
-  "/api/options/hottest-chains/route": "app/api/options/hottest-chains/route.js",
-  "/dashboard/news/page": "app/dashboard/news/page.js",
-  "/dashboard/options/page": "app/dashboard/options/page.js",
-  "/dashboard/watchlist/page": "app/dashboard/watchlist/page.js",
-  "/dashboard/shorts/page": "app/dashboard/shorts/page.js",
-  "/dashboard/market/page": "app/dashboard/market/page.js"
-}
+{}
