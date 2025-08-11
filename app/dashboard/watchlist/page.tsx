@@ -40,6 +40,8 @@ interface StockQuote {
   darkpoolPremium?: number;
   oiChange?: number;
   atmCallDelta?: number;
+  updatedAt: number; // epoch ms
+  stale?: boolean; // derived client-side
 }
 
 // Utility functions
@@ -71,30 +73,63 @@ export default function WatchlistPage() {
   const [newTicker, setNewTicker] = useState('');
   const [addingStock, setAddingStock] = useState(false);
 
+  const loadCachedQuotes = (tickers: string[]) => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('watchlist_quotes_v1') : null;
+      if (!raw) return;
+      const parsed: Record<string, StockQuote> = JSON.parse(raw);
+      const subset: Record<string, StockQuote> = {};
+      const now = Date.now();
+      tickers.forEach(t => {
+        const q = parsed[t];
+        if (q) {
+          const stale = now - q.updatedAt > 5 * 60 * 1000; // 5 min
+            subset[t] = { ...q, stale };
+        }
+      });
+      // Only set if we have something
+      if (Object.keys(subset).length) {
+        setStockQuotes(prev => ({ ...subset, ...prev }));
+      }
+    } catch (e) {
+      console.warn('Failed to load cached quotes', e);
+    }
+  };
+
+  const persistQuotes = (quotes: Record<string, StockQuote>) => {
+    try {
+      const existingRaw = typeof window !== 'undefined' ? localStorage.getItem('watchlist_quotes_v1') : null;
+      const existing = existingRaw ? JSON.parse(existingRaw) : {};
+      const merged = { ...existing, ...quotes };
+      localStorage.setItem('watchlist_quotes_v1', JSON.stringify(merged));
+    } catch (e) {
+      console.warn('Failed to persist quotes', e);
+    }
+  };
+
   const fetchWatchlists = async () => {
     setRefreshing(true);
     try {
       const response = await fetch('/api/watchlist', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
-
-        // API returns array directly, but handle legacy {data} shape
         const watchlistArray = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
         setWatchlists(watchlistArray);
-        
-        // Set active watchlist to default or first one
         const defaultWatchlist = watchlistArray.find((w: WatchlistData) => w.isDefault);
         if (defaultWatchlist) {
           setActiveWatchlist(defaultWatchlist.id);
         } else if (watchlistArray.length > 0) {
           setActiveWatchlist(watchlistArray[0].id);
         }
-        
-        // Fetch quotes for all stocks
+        // Collect all tickers and load cached quotes immediately (non-blocking UI)
         const allTickers = watchlistArray.flatMap((w: WatchlistData) =>
           w.items.map((item: WatchlistItem) => item.stock?.ticker || item.ticker || '')
         ).filter(Boolean);
-        await fetchStockQuotes(allTickers);
+        loadCachedQuotes(allTickers);
+        // Background fetch fresh quotes AFTER paint
+        setTimeout(() => {
+          backgroundUpdateQuotes(allTickers);
+        }, 100);
       }
     } catch (error) {
       console.error('Failed to fetch watchlists:', error);
@@ -119,116 +154,94 @@ export default function WatchlistPage() {
     }
   };
 
-  const fetchStockQuotes = async (tickers: string[]) => {
-    if (tickers.length === 0) return;
-    
-    try {
-      // Fetch real stock data from API
-      const quotes: Record<string, StockQuote> = {};
+  const backgroundUpdateQuotes = async (tickers: string[]) => {
+    if (!tickers.length) return;
+    const newQuotes: Record<string, StockQuote> = {};
+    await Promise.all(tickers.map(async (ticker) => {
+      try {
+        const [stateRes, maxPainRes, darkpoolRes, oiRes] = await Promise.all([
+          fetch(`/api/stocks/${ticker}?type=state`),
+          fetch(`/api/options?type=max-pain&ticker=${ticker}`),
+          fetch(`/api/darkpool/${ticker}`),
+          fetch(`/api/options?type=oi-change&ticker=${ticker}`)
+        ]);
 
-      const promises = tickers.map(async (ticker) => {
-        try {
-          const [stateRes, maxPainRes, darkpoolRes, oiRes] = await Promise.all([
-            fetch(`/api/stocks/${ticker}?type=state`, { cache: 'no-store' }),
-            fetch(`/api/options?type=max-pain&ticker=${ticker}`, { cache: 'no-store' }),
-            fetch(`/api/darkpool/${ticker}`, { cache: 'no-store' }),
-            fetch(`/api/options?type=oi-change&ticker=${ticker}`, { cache: 'no-store' })
-          ]);
-
-          let price = 0;
-          let change = 0;
-          let changePercent = 0;
-          let volume = 0;
-          if (stateRes.ok) {
-            const data = await stateRes.json();
+        let price = 0, change = 0, changePercent = 0, volume = 0;
+        if (stateRes.ok) {
+          const data = await stateRes.json();
             const state = data?.data || data;
             price = state?.last_price ?? 0;
             change = state?.change ?? 0;
             changePercent = state?.change_percent ?? 0;
             volume = state?.volume ?? 0;
-          }
-
-          let maxPain: number | undefined;
-          let nextExpiry: string | undefined;
-          if (maxPainRes.ok) {
-            const mp = await maxPainRes.json();
-            const mpData = mp?.data?.data || mp.data;
-            if (Array.isArray(mpData)) {
-              const today = new Date();
-              const upcoming = mpData
-                .map((d: any) => ({
-                  expiry: d.expiry,
-                  maxPain: parseFloat(d.max_pain),
-                }))
-                .filter((d: any) => !isNaN(new Date(d.expiry).getTime()) && new Date(d.expiry) >= today)
-                .sort((a: any, b: any) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
-              if (upcoming.length) {
-                nextExpiry = upcoming[0].expiry;
-                maxPain = upcoming[0].maxPain;
-              }
-            }
-          }
-
-          let atmCallDelta: number | undefined;
-          if (nextExpiry) {
-            const greeksRes = await fetch(`/api/options?type=greeks&ticker=${ticker}&expiry=${nextExpiry}`, { cache: 'no-store' });
-            if (greeksRes.ok) {
-              const gr = await greeksRes.json();
-              if (Array.isArray(gr.data) && gr.data.length) {
-                const closest = gr.data.reduce((prev: any, curr: any) => {
-                  return Math.abs(parseFloat(curr.strike) - price) < Math.abs(parseFloat(prev.strike) - price) ? curr : prev;
-                });
-                atmCallDelta = parseFloat(closest.call_delta);
-              }
-            }
-          }
-
-          let darkpoolPremium: number | undefined;
-          if (darkpoolRes.ok) {
-            const dp = await darkpoolRes.json();
-            const dpData = dp?.data?.data || dp.data;
-            if (Array.isArray(dpData)) {
-              darkpoolPremium = dpData.reduce(
-                (sum: number, trade: any) => sum + parseFloat(trade.premium || '0'),
-                0
-              );
-            }
-          }
-
-          let oiChange: number | undefined;
-          if (oiRes.ok) {
-            const oi = await oiRes.json();
-            const oiData = oi?.data?.data || oi.data;
-            if (Array.isArray(oiData)) {
-              oiChange = oiData.reduce(
-                (sum: number, item: any) => sum + (item.oi_diff_plain || 0),
-                0
-              );
-            }
-          }
-
-          quotes[ticker] = {
-            ticker,
-            price,
-            change,
-            changePercent,
-            volume,
-            maxPain,
-            nextExpiry,
-            darkpoolPremium,
-            oiChange,
-            atmCallDelta,
-          };
-        } catch (error) {
-          console.error(`Failed to fetch quote for ${ticker}:`, error);
         }
-      });
 
-      await Promise.all(promises);
-      setStockQuotes(quotes);
-    } catch (error) {
-      console.error('Failed to fetch stock quotes:', error);
-      setStockQuotes({}); // Set empty object instead of mock data on error
+        let maxPain: number | undefined; let nextExpiry: string | undefined;
+        if (maxPainRes.ok) {
+          const mp = await maxPainRes.json();
+          const mpData = mp?.data?.data || mp.data;
+          if (Array.isArray(mpData)) {
+            const today = new Date();
+            const upcoming = mpData.map((d: any) => ({ expiry: d.expiry, maxPain: parseFloat(d.max_pain) }))
+              .filter((d: any) => !isNaN(new Date(d.expiry).getTime()) && new Date(d.expiry) >= today)
+              .sort((a: any, b: any) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
+            if (upcoming.length) { nextExpiry = upcoming[0].expiry; maxPain = upcoming[0].maxPain; }
+          }
+        }
+
+        let atmCallDelta: number | undefined;
+        if (nextExpiry) {
+          const greeksRes = await fetch(`/api/options?type=greeks&ticker=${ticker}&expiry=${nextExpiry}`);
+          if (greeksRes.ok) {
+            const gr = await greeksRes.json();
+            if (Array.isArray(gr.data) && gr.data.length) {
+              const closest = gr.data.reduce((prev: any, curr: any) => (
+                Math.abs(parseFloat(curr.strike) - price) < Math.abs(parseFloat(prev.strike) - price) ? curr : prev
+              ));
+              atmCallDelta = parseFloat(closest.call_delta);
+            }
+          }
+        }
+
+        let darkpoolPremium: number | undefined;
+        if (darkpoolRes.ok) {
+          const dp = await darkpoolRes.json();
+          const dpData = dp?.data?.data || dp.data;
+          if (Array.isArray(dpData)) {
+            darkpoolPremium = dpData.reduce((sum: number, trade: any) => sum + parseFloat(trade.premium || '0'), 0);
+          }
+        }
+
+        let oiChange: number | undefined;
+        if (oiRes.ok) {
+          const oi = await oiRes.json();
+          const oiData = oi?.data?.data || oi.data;
+          if (Array.isArray(oiData)) {
+            oiChange = oiData.reduce((sum: number, item: any) => sum + (item.oi_diff_plain || 0), 0);
+          }
+        }
+
+        newQuotes[ticker] = {
+          ticker,
+          price,
+          change,
+          changePercent,
+          volume,
+          maxPain,
+          nextExpiry,
+          darkpoolPremium,
+          oiChange,
+          atmCallDelta,
+          updatedAt: Date.now(),
+        };
+      } catch (e) {
+        console.error('Quote update failed for', ticker, e);
+      }
+    }));
+
+    if (Object.keys(newQuotes).length) {
+      setStockQuotes(prev => ({ ...prev, ...newQuotes }));
+      persistQuotes(newQuotes);
     }
   };
 
@@ -285,21 +298,22 @@ export default function WatchlistPage() {
   useEffect(() => {
     const current = watchlists.find(w => w.id === activeWatchlist);
     if (current) {
-      const tickers = current.items
-        .map((item: WatchlistItem) => item.stock?.ticker || item.ticker || '')
-        .filter(Boolean);
-      fetchStockQuotes(tickers);
+      const tickers = current.items.map((item: WatchlistItem) => item.stock?.ticker || item.ticker || '').filter(Boolean);
+      // Load cached immediately (already done on fetchWatchlists but also handle switching tabs)
+      loadCachedQuotes(tickers);
+      // Background refresh without blocking
+      backgroundUpdateQuotes(tickers);
     }
   }, [activeWatchlist, watchlists]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+  const interval = setInterval(() => {
       const current = watchlists.find(w => w.id === activeWatchlist);
       if (current) {
         const tickers = current.items
           .map((item: WatchlistItem) => item.stock?.ticker || item.ticker || '')
           .filter(Boolean);
-        fetchStockQuotes(tickers);
+    backgroundUpdateQuotes(tickers);
       }
     }, 60000);
     return () => clearInterval(interval);
@@ -450,7 +464,10 @@ export default function WatchlistPage() {
                         <div className="flex items-center space-x-8">
                           <div className="text-right">
                             <p className="text-sm text-gray-500">Price</p>
-                            <p className="text-2xl font-bold">{formatCurrency(quote.price)}</p>
+                            <p className="text-2xl font-bold">
+                              {formatCurrency(quote.price || 0)}
+                              {quote.stale && <span className="ml-2 text-xs text-orange-500">(stale)</span>}
+                            </p>
                           </div>
 
                           <div className="text-right">
