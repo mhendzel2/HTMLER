@@ -26,35 +26,35 @@
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/filters/page.js"
     ],
-    "/dashboard/websocket-test/page": [
+    "/dashboard/trading/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/websocket-test/page.js"
+      "static/chunks/app/dashboard/trading/page.js"
     ],
-    "/dashboard/data-stream-test/page": [
+    "/dashboard/news/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/data-stream-test/page.js"
+      "static/chunks/app/dashboard/news/page.js"
     ],
-    "/dashboard/congress/page": [
+    "/dashboard/shorts/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/congress/page.js"
+      "static/chunks/app/dashboard/shorts/page.js"
+    ],
+    "/dashboard/options/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/options/page.js"
     ],
     "/dashboard/market/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/market/page.js"
     ],
-    "/dashboard/trading/page": [
+    "/dashboard/watchlist/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/trading/page.js"
-    ],
-    "/dashboard/alerts/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/alerts/page.js"
+      "static/chunks/app/dashboard/watchlist/page.js"
     ]
   }
 }

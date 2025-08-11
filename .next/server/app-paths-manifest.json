@@ -1,15 +1,12 @@
 {
-  "/page": "app/page.js",
-  "/api/market/route": "app/api/market/route.js",
-  "/api/test-websocket-access/route": "app/api/test-websocket-access/route.js",
-  "/api/options/hottest-chains/route": "app/api/options/hottest-chains/route.js",
-  "/api/ibkr/connect/route": "app/api/ibkr/connect/route.js",
-  "/api/alerts/flow/route": "app/api/alerts/flow/route.js",
-  "/dashboard/filters/page": "app/dashboard/filters/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/market/page": "app/dashboard/market/page.js",
-  "/dashboard/congress/page": "app/dashboard/congress/page.js",
-  "/dashboard/data-stream-test/page": "app/dashboard/data-stream-test/page.js",
+  "/api/stocks/[ticker]/route": "app/api/stocks/[ticker]/route.js",
+  "/api/watchlist/route": "app/api/watchlist/route.js",
+  "/api/options/route": "app/api/options/route.js",
   "/dashboard/trading/page": "app/dashboard/trading/page.js",
-  "/dashboard/alerts/page": "app/dashboard/alerts/page.js"
+  "/dashboard/shorts/page": "app/dashboard/shorts/page.js",
+  "/api/darkpool/[ticker]/route": "app/api/darkpool/[ticker]/route.js",
+  "/dashboard/options/page": "app/dashboard/options/page.js",
+  "/dashboard/news/page": "app/dashboard/news/page.js",
+  "/dashboard/market/page": "app/dashboard/market/page.js",
+  "/dashboard/watchlist/page": "app/dashboard/watchlist/page.js"
 }
