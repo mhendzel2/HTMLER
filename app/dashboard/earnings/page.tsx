@@ -201,21 +201,26 @@ export default function EarningsPage() {
         flow_loading: false
       })));
 
-      // Set up frequent real-time updates (every 5 seconds) since we have full access
-      const updateInterval = setInterval(() => {
-        const currentAnalysis = enhancedFlowAnalysis.getFlowAnalysisForTickers(tickers);
-        
-        // Update earnings data with real-time sentiment
-        setEarningsData(prev => prev.map(item => ({
-          ...item,
-          flow_sentiment: currentAnalysis[item.symbol] || item.flow_sentiment || undefined
-        })));
-        
-        setDisplayData(prev => prev.map(item => ({
-          ...item,
-          flow_sentiment: currentAnalysis[item.symbol] || item.flow_sentiment || undefined
-        })));
-      }, 5000); // Update every 5 seconds with full WebSocket access
+      // Poll lightweight API endpoint for refreshed metrics every 10s
+      const updateInterval = setInterval(async () => {
+        try {
+          const resp = await fetch(`/api/flow/earnings-metrics?symbols=${encodeURIComponent(tickers.join(','))}`);
+          if (resp.ok) {
+            const json = await resp.json();
+            const currentAnalysis = json.data || {};
+            setEarningsData(prev => prev.map(item => ({
+              ...item,
+              flow_sentiment: currentAnalysis[item.symbol] || item.flow_sentiment || undefined
+            })));
+            setDisplayData(prev => prev.map(item => ({
+              ...item,
+              flow_sentiment: currentAnalysis[item.symbol] || item.flow_sentiment || undefined
+            })));
+          }
+        } catch (e) {
+          // Silent
+        }
+      }, 10000);
       
       // Clean up on unmount
       return () => {

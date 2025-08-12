@@ -98,12 +98,31 @@ export async function GET(req: NextRequest) {
         if (ts < sinceTs) return false;
         return true;
       })
-      .map(alert => ({
-        ...alert,
-        processed_at: Date.now(),
-        source: 'api',
-        filter_matches: analyzeAlert(alert)
-      }));
+      .map(alert => {
+        const syntheticFlags = {
+          option_symbol: !alert.option_symbol,
+          expiry: !alert.expiry,
+          strike: !alert.strike
+        };
+        // Apply fallback derivations (mirror logic in client but here for transparency)
+        if (!alert.option_symbol && alert.ticker && alert.strike && alert.expiry && alert.type) {
+          alert.option_symbol = `${alert.ticker}_${alert.strike}_${alert.expiry}_${String(alert.type).toUpperCase()}`;
+        }
+        if (!alert.expiry) {
+          alert.expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        }
+        if (!alert.strike && alert.option_symbol) {
+          const m = String(alert.option_symbol).match(/(\d+\.?\d*)/);
+          if (m) alert.strike = parseFloat(m[1]);
+        }
+        return {
+          ...alert,
+          processed_at: Date.now(),
+          source: 'api',
+          filter_matches: analyzeAlert(alert),
+          synthetic: syntheticFlags
+        };
+      });
 
     // Sort and slice
     filtered.sort((a, b) => {
@@ -128,7 +147,8 @@ export async function GET(req: NextRequest) {
         min_volume: minVolume,
         lookback_minutes: sinceMinutes,
         page,
-        cache: false
+        cache: false,
+        upstream_endpoint: '/option-trades/flow-alerts'
       }
     };
     // Cache for short TTL (15s) to absorb bursts

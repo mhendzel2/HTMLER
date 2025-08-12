@@ -1,4 +1,5 @@
-import { unusualWhalesAPI } from './unusual-whales-api';
+// Removed static unusualWhalesAPI import to prevent pulling in discord/worker_threads on client bundles.
+// Server-only access to upstream API will be done via dynamic import inside helper functions.
 import { unusualWhalesWS } from './websocket-client';
 
 export interface BigMoneyFilter {
@@ -244,19 +245,37 @@ export class TradingFilterSystem {
   async loadHistoricalAlerts(lookbackDays: number = 5): Promise<number> {
     const since = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
     try {
-      const rawAlerts: any[] = await unusualWhalesAPI.getFlowAlertsSince(since, 50, 100);
+      let rawAlerts: any[] = [];
+      if (typeof window === 'undefined') {
+        try {
+          const mod = await import('./unusual-whales-api');
+          if ((mod as any).unusualWhalesAPI?.getFlowAlertsSince) {
+            rawAlerts = await (mod as any).unusualWhalesAPI.getFlowAlertsSince(since, 50, 100);
+          }
+        } catch (e) {
+          console.warn('Server historical fetch failed, falling back to API route paging', e);
+        }
+      }
+      if (!rawAlerts.length) {
+        // Client or fallback: page through our consolidated API route until cutoff
+        for (let page = 0; page < 20; page++) {
+          const resp = await fetch(`/api/alerts/flow?limit=100&page=${page}&no_cache=1&since_minutes=${Math.ceil((Date.now()-since)/60000)}`);
+          if (!resp.ok) break;
+            const json: any = await resp.json();
+          const arr = json?.data || [];
+          if (!Array.isArray(arr) || !arr.length) break;
+          rawAlerts.push(...arr);
+          if (arr.length < 100) break;
+        }
+      }
       let processed = 0;
       for (const raw of rawAlerts) {
         const normalized = this.normalizeFlowAlert(raw);
-        // Only process if timestamp within window (defensive)
         if (normalized.timestamp >= since) {
           this.processFlowAlert(normalized);
           processed++;
         }
-        // Yield to event loop periodically
-        if (processed % 250 === 0) {
-          await new Promise(res => setTimeout(res, 0));
-        }
+        if (processed % 250 === 0) await new Promise(r => setTimeout(r, 0));
       }
       console.log(`📚 Historical alerts loaded: ${processed}`);
       return processed;
@@ -287,9 +306,21 @@ export class TradingFilterSystem {
    */
   private async pollRecentFlowAlerts(): Promise<void> {
     try {
-      const response: any = await unusualWhalesAPI.getFlowAlerts(50);
-      const alerts = response.data || response;
-
+      let alerts: any[] = [];
+      if (typeof window === 'undefined') {
+        try {
+          const mod = await import('./unusual-whales-api');
+          const resp: any = await (mod as any).unusualWhalesAPI.getFlowAlerts(50);
+          alerts = resp?.data?.data || resp?.data || resp || [];
+        } catch {}
+      }
+      if (!alerts.length) {
+        const resp = await fetch('/api/alerts/flow?limit=50&no_cache=1');
+        if (resp.ok) {
+          const json = await resp.json();
+          alerts = json.data || [];
+        }
+      }
       if (Array.isArray(alerts)) {
         for (const alert of alerts) {
           this.processFlowAlert(this.normalizeFlowAlert(alert));
@@ -533,22 +564,27 @@ export class TradingFilterSystem {
   private startGEXPolling(ticker: string): void {
     const pollGEX = async () => {
       try {
-        const response = await unusualWhalesAPI.getStockGEX(ticker);
-        const gexData = this.normalizeGEXData(ticker, response);
-        
-        const callback = this.gexSubscriptions.get(ticker);
-        if (callback) {
-          callback(gexData);
+        let raw: any = null;
+        if (typeof window === 'undefined') {
+          try {
+            const mod = await import('./unusual-whales-api');
+            raw = await (mod as any).unusualWhalesAPI.getStockGEX(ticker);
+          } catch {}
         }
+        if (!raw) {
+          // Fallback: attempt internal API if implemented later
+          const resp = await fetch(`/api/gex?ticker=${ticker}`);
+          if (resp.ok) raw = await resp.json();
+        }
+        if (!raw) return;
+        const gexData = this.normalizeGEXData(ticker, raw);
+        const callback = this.gexSubscriptions.get(ticker);
+        if (callback) callback(gexData);
       } catch (error) {
         console.error(`Error fetching GEX for ${ticker}:`, error);
       }
     };
-
-    // Poll every 60 seconds for GEX updates
-    const intervalId = setInterval(pollGEX, 60000);
-    
-    // Initial fetch
+    setInterval(pollGEX, 60000);
     pollGEX();
   }
 

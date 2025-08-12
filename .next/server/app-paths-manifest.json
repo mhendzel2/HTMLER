@@ -1,10 +1,12 @@
 {
-  "/api/watchlist/route": "app/api/watchlist/route.js",
-  "/api/stocks/[ticker]/route": "app/api/stocks/[ticker]/route.js",
-  "/api/options/route": "app/api/options/route.js",
-  "/api/darkpool/[ticker]/route": "app/api/darkpool/[ticker]/route.js",
-  "/page": "app/page.js",
+  "/api/market/route": "app/api/market/route.js",
+  "/api/alerts/flow/route": "app/api/alerts/flow/route.js",
+  "/api/options/hottest-chains/route": "app/api/options/hottest-chains/route.js",
+  "/api/earnings/route": "app/api/earnings/route.js",
+  "/api/test-websocket-access/route": "app/api/test-websocket-access/route.js",
+  "/dashboard/watchlist/page": "app/dashboard/watchlist/page.js",
+  "/dashboard/market/page": "app/dashboard/market/page.js",
+  "/dashboard/options/page": "app/dashboard/options/page.js",
   "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/institutions/page": "app/dashboard/institutions/page.js",
-  "/dashboard/watchlist/page": "app/dashboard/watchlist/page.js"
+  "/dashboard/earnings/page": "app/dashboard/earnings/page.js"
 }

@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-// Alias model inference to avoid name collision with UI handler
-import { analyzeSentiment as runFinbertSentiment } from '@/lib/finbert-local';
+import { analyzeSentiments } from '@/lib/finbert-local';
 import { Header } from '@/components/dashboard/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -83,45 +82,77 @@ export default function FinBERTAnalysisPage() {
   };
 
   const loadSentimentData = async () => {
-    const popularSymbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'AMZN', 'NVDA', 'META'];
-
-    const analyses: SentimentAnalysis[] = [];
-    for (const symbol of popularSymbols) {
-      const arr = await runFinbertSentiment(`${symbol} stock`) as FinBertRawResult[];
-      const primary = arr[0];
-      const label = (primary?.label || 'neutral').toLowerCase();
-      analyses.push({
-        symbol,
-        sentiment: label === 'positive' ? 'bullish' : label === 'negative' ? 'bearish' : 'neutral',
-        confidence: primary?.score ? Math.round(primary.score * 100) : 0,
-        score: primary?.score || 0,
-        headlines: generateMockHeadlines(symbol),
-        lastUpdated: new Date().toISOString(),
-        tradingSignal: label === 'positive' ? 'BUY' : label === 'negative' ? 'SELL' : 'HOLD',
-        riskLevel: label === 'positive' || label === 'negative' ? 'MEDIUM' : 'LOW',
+    const baseSymbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'AMZN', 'NVDA', 'META'];
+    try {
+      // 1. Fetch news headlines for symbols (server aggregates)
+      const res = await fetch(`/api/finbert/sentiment?symbols=${encodeURIComponent(baseSymbols.join(','))}`);
+      if (!res.ok) throw new Error('Failed to fetch news');
+      const json = await res.json();
+      const news: { symbol?: string; title: string; summary?: string; published_at?: string }[] = json.news || [];
+      // 2. Group by symbol
+      const grouped: Record<string, { texts: string[]; raw: typeof news }> = {};
+      for (const n of news) {
+        const sym = (n.symbol || '').toUpperCase();
+        if (!grouped[sym]) grouped[sym] = { texts: [], raw: [] };
+        const text = n.title + (n.summary ? '. ' + n.summary : '');
+        grouped[sym].texts.push(text);
+        grouped[sym].raw.push(n);
+      }
+      // 3. Prepare batch for FinBERT (limit per symbol)
+      const batch: string[] = [];
+      const index: { sym: string; count: number }[] = [];
+      for (const sym of baseSymbols) {
+        const g = grouped[sym];
+        if (!g) continue;
+        const subset = g.texts.slice(0, 8);
+        batch.push(...subset);
+        index.push({ sym, count: subset.length });
+      }
+      // 4. Run batch inference client-side
+      const sentimentArrays = await analyzeSentiments(batch);
+      // 5. Aggregate per symbol
+      const aggScores: Record<string, { pos: number; neg: number; neu: number; total: number }> = {};
+      let cursor = 0;
+      for (const entry of index) {
+        const seg = sentimentArrays.slice(cursor, cursor + entry.count);
+        cursor += entry.count;
+        for (const rA of seg) {
+          const r = rA[0];
+          const label = (r.label || 'neutral').toLowerCase();
+          if (!aggScores[entry.sym]) aggScores[entry.sym] = { pos:0, neg:0, neu:0, total:0 };
+          if (label.includes('pos')) aggScores[entry.sym].pos += r.score; else if (label.includes('neg')) aggScores[entry.sym].neg += r.score; else aggScores[entry.sym].neu += r.score;
+          aggScores[entry.sym].total += 1;
+        }
+      }
+      // 6. Build SentimentAnalysis objects
+      const analyses: SentimentAnalysis[] = baseSymbols.map(sym => {
+        const agg = aggScores[sym] || { pos:0, neg:0, neu:0, total:1 };
+        const net = (agg.pos - agg.neg) / agg.total;
+        const primaryLabel = net > 0.1 ? 'bullish' : net < -0.1 ? 'bearish' : 'neutral';
+        const confidence = Math.round(Math.max(agg.pos, agg.neg, agg.neu) / (agg.total || 1) * 100);
+        const headlines: NewsHeadline[] = (grouped[sym]?.raw || []).slice(0,5).map(n => ({
+          title: n.title,
+            sentiment: primaryLabel === 'bullish' ? 'positive' : primaryLabel === 'bearish' ? 'negative' : 'neutral',
+            confidence,
+            source: 'News',
+            timestamp: n.published_at || new Date().toISOString(),
+            relevanceScore: confidence
+        }));
+        return {
+          symbol: sym,
+          sentiment: primaryLabel as any,
+          confidence,
+          score: net,
+          headlines,
+          lastUpdated: new Date().toISOString(),
+          tradingSignal: primaryLabel === 'bullish' ? 'BUY' : primaryLabel === 'bearish' ? 'SELL' : 'HOLD',
+          riskLevel: primaryLabel === 'neutral' ? 'LOW' : 'MEDIUM'
+        };
       });
+      setSentimentData(analyses);
+    } catch (e) {
+      console.error('Sentiment data load failed:', e);
     }
-
-    setSentimentData(analyses);
-  };
-
-  const generateMockHeadlines = (symbol: string): NewsHeadline[] => {
-    const headlines = [
-      `${symbol} reports strong quarterly earnings, beats expectations`,
-      `Analysts upgrade ${symbol} to buy rating on growth prospects`,
-      `${symbol} announces new product launch, shares react positively`,
-      `Institutional investors increase ${symbol} holdings significantly`,
-      `${symbol} faces regulatory scrutiny, stock pressure continues`
-    ];
-
-    return headlines.slice(0, Math.floor(Math.random() * 3) + 2).map((title, index) => ({
-      title,
-      sentiment: Math.random() > 0.6 ? 'positive' : Math.random() > 0.3 ? 'negative' : 'neutral',
-      confidence: Math.floor(Math.random() * 30) + 70,
-      source: ['Reuters', 'Bloomberg', 'CNBC', 'MarketWatch', 'Yahoo Finance'][Math.floor(Math.random() * 5)],
-      timestamp: new Date(Date.now() - Math.random() * 86400000).toISOString(),
-      relevanceScore: Math.floor(Math.random() * 30) + 70
-    }));
   };
 
   const loadAlerts = async () => {
@@ -166,36 +197,42 @@ export default function FinBERTAnalysisPage() {
   // User-triggered (mock) analysis; real model call already used in initial load
   const analyzeSymbolSentiment = async (symbol: string) => {
     if (!symbol) return;
-
     setAnalyzing(true);
     try {
-      console.log(`🧠 Analyzing sentiment for ${symbol} with FinBERT...`);
-      
-      // Simulate FinBERT analysis
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
+      const sym = symbol.toUpperCase();
+      const res = await fetch(`/api/finbert/sentiment?symbols=${encodeURIComponent(sym)}`);
+      if (!res.ok) throw new Error('Failed to fetch news');
+      const json = await res.json();
+      const news: { symbol?: string; title: string; summary?: string; published_at?: string }[] = json.news || [];
+      const texts = news.slice(0,8).map(n => n.title + (n.summary?'. '+n.summary:''));
+      const outs = await analyzeSentiments(texts);
+      let pos=0,neg=0,neu=0; outs.forEach(a=>{ const l=(a[0]?.label||'').toLowerCase(); const s=a[0]?.score||0; if(l.includes('pos')) pos+=s; else if(l.includes('neg')) neg+=s; else neu+=s; });
+      const total = outs.length || 1;
+      const net = (pos - neg) / total;
+      const primaryLabel = net > 0.1 ? 'bullish' : net < -0.1 ? 'bearish' : 'neutral';
+      const confidence = Math.round(Math.max(pos,neg,neu)/ (pos+neg+neu || 1) * 100);
+      const headlines: NewsHeadline[] = news.slice(0,5).map(n => ({
+        title: n.title,
+        sentiment: primaryLabel === 'bullish' ? 'positive' : primaryLabel === 'bearish' ? 'negative' : 'neutral',
+        confidence,
+        source: 'News',
+        timestamp: n.published_at || new Date().toISOString(),
+        relevanceScore: confidence
+      }));
       const newAnalysis: SentimentAnalysis = {
-        symbol: symbol.toUpperCase(),
-        sentiment: Math.random() > 0.6 ? 'bullish' : Math.random() > 0.3 ? 'bearish' : 'neutral',
-        confidence: Math.floor(Math.random() * 30) + 70,
-        score: (Math.random() - 0.5) * 2,
-        headlines: generateMockHeadlines(symbol),
+        symbol: sym,
+        sentiment: primaryLabel as any,
+        confidence,
+        score: net,
+        headlines,
         lastUpdated: new Date().toISOString(),
-        tradingSignal: Math.random() > 0.6 ? 'BUY' : Math.random() > 0.3 ? 'SELL' : 'HOLD',
-        riskLevel: Math.random() > 0.7 ? 'HIGH' : Math.random() > 0.4 ? 'MEDIUM' : 'LOW'
+        tradingSignal: primaryLabel === 'bullish' ? 'BUY' : primaryLabel === 'bearish' ? 'SELL' : 'HOLD',
+        riskLevel: primaryLabel === 'neutral' ? 'LOW' : 'MEDIUM'
       };
-
-      // Update or add to sentiment data
-      setSentimentData(prev => {
-        const filtered = prev.filter(item => item.symbol !== symbol.toUpperCase());
-        return [newAnalysis, ...filtered];
-      });
-
+      setSentimentData(prev => [newAnalysis, ...prev.filter(p=>p.symbol!==sym)]);
       setSearchSymbol('');
-      console.log(`✅ FinBERT analysis complete for ${symbol}`);
-
     } catch (error) {
-      console.error('Failed to analyze sentiment:', error);
+      console.error('Failed to analyze symbol sentiment:', error);
     } finally {
       setAnalyzing(false);
     }

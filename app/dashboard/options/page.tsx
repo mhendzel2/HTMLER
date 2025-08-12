@@ -29,6 +29,8 @@ interface OptionsActivity {
   theta?: number | string;
   gamma?: number | string;
   vega?: number | string;
+  synthetic?: { option_symbol?: boolean; expiry?: boolean; strike?: boolean };
+  source?: string;
 }
 
 export default function OptionsPage() {
@@ -84,6 +86,8 @@ export default function OptionsPage() {
             tags: alert.tags || [alert.rule_name || 'Flow Alert'],
             delta: alert.delta || 0,
             theta: alert.theta || 0,
+            synthetic: alert.synthetic,
+            source: alert.source,
           }));
           // Filter by volume threshold if set
           const filteredActivities = newActivities.filter((activity: OptionsActivity) => 
@@ -368,7 +372,7 @@ export default function OptionsPage() {
                       
                       <div className="text-right">
                         <p className="text-sm text-gray-500">Premium</p>
-                        <p className="font-semibold">{formatCurrency(item.premium)}</p>
+                        <p className="font-semibold flex items-center gap-1 justify-end">{formatCurrency(item.premium)} {item.synthetic?.option_symbol && <span title="Derived option symbol" className="text-xs text-orange-500">∗</span>}</p>
                       </div>
                       
                       <div className="text-right">
@@ -379,6 +383,7 @@ export default function OptionsPage() {
                       <div className="text-right">
                         <p className="text-sm text-gray-500">Time</p>
                         <p className="text-xs">{item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : 'N/A'}</p>
+                        {item.source && <p className="text-[10px] text-gray-400">{item.source}</p>}
                       </div>
                     </div>
                     
@@ -405,6 +410,9 @@ export default function OptionsPage() {
                       <p className="text-xs text-orange-700 dark:text-orange-300 mt-1">
                         Volume is {((item.volume / Math.max(1, item.open_interest || 1)) * 100).toFixed(0)}% of open interest
                       </p>
+                      {item.synthetic && (item.synthetic.option_symbol || item.synthetic.expiry || item.synthetic.strike) && (
+                        <p className="text-[10px] mt-1 text-orange-500">∗ Contains derived fields (not provided upstream)</p>
+                      )}
                     </div>
                   )}
                 </CardContent>

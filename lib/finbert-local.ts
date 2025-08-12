@@ -16,7 +16,8 @@ async function getPipeline() {
   if (_loading) return _loading;
   _loading = (async () => {
     const { pipeline } = await import('@xenova/transformers');
-    _pipeline = await pipeline('text-classification', 'ProsusAI/finbert');
+  const modelId = (window as any).__FINBERT_MODEL__ || 'ProsusAI/finbert';
+  _pipeline = await pipeline('text-classification', modelId);
     return _pipeline;
   })();
   return _loading;
@@ -32,4 +33,29 @@ export async function analyzeSentiment(text: string): Promise<FinBertResult[]> {
     console.warn('FinBERT analyzeSentiment fallback due to error:', (e as any)?.message);
     return [{ label: 'neutral', score: 0 }];
   }
+}
+
+// Batch version: returns array of result arrays corresponding to input texts
+export async function analyzeSentiments(texts: string[]): Promise<FinBertResult[][]> {
+  const results: FinBertResult[][] = [];
+  try {
+    const pipe = await getPipeline();
+    for (const t of texts) {
+      try {
+        const out = await pipe(t);
+        results.push(Array.isArray(out) ? out : [out]);
+      } catch (inner) {
+        results.push([{ label: 'neutral', score: 0 }]);
+      }
+    }
+  } catch (e) {
+    console.warn('FinBERT batch analyze failed, returning neutral stubs:', (e as any)?.message);
+    return texts.map(() => [{ label: 'neutral', score: 0 }]);
+  }
+  return results;
+}
+
+export function resetFinbertCache() {
+  _pipeline = null;
+  _loading = null;
 }

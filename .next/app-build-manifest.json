@@ -6,30 +6,30 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
-    ],
     "/dashboard/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/layout.js"
     ],
-    "/dashboard/page": [
+    "/dashboard/trading/finbert/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/page.js"
+      "static/chunks/app/dashboard/trading/finbert/page.js"
     ],
-    "/dashboard/institutions/page": [
+    "/dashboard/market/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/institutions/page.js"
+      "static/chunks/app/dashboard/market/page.js"
     ],
-    "/api/institutions/route": [
+    "/api/market/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/institutions/route.js"
+      "static/chunks/app/api/market/route.js"
+    ],
+    "/api/options/hottest-chains/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/options/hottest-chains/route.js"
     ],
     "/dashboard/watchlist/page": [
       "static/chunks/webpack.js",
@@ -41,20 +41,40 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/watchlist/route.js"
     ],
-    "/api/stocks/[ticker]/route": [
+    "/api/watchlist/quotes/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/stocks/[ticker]/route.js"
+      "static/chunks/app/api/watchlist/quotes/route.js"
     ],
-    "/api/options/route": [
+    "/dashboard/options/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/options/route.js"
+      "static/chunks/app/dashboard/options/page.js"
     ],
-    "/api/darkpool/[ticker]/route": [
+    "/api/alerts/flow/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/darkpool/[ticker]/route.js"
+      "static/chunks/app/api/alerts/flow/route.js"
+    ],
+    "/dashboard/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/page.js"
+    ],
+    "/dashboard/earnings/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/earnings/page.js"
+    ],
+    "/api/earnings/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/earnings/route.js"
+    ],
+    "/api/test-websocket-access/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/test-websocket-access/route.js"
     ]
   }
 }
