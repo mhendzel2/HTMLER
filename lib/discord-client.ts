@@ -1,6 +1,11 @@
+// Intentionally no 'use server' directive to avoid Next.js Server Actions validation on sync exports.
 import { Client, GatewayIntentBits, TextChannel, Message, Partials, Collection } from 'discord.js';
 
 /**
+ * NOTE: This module should only be imported dynamically (await import('./discord-client'))
+ * inside server-side code paths (Node runtime). Avoid static imports in Next.js route
+ * handlers to prevent bundling issues and missing native dependencies in edge/runtime.
+ *
  * Lightweight Discord client helper for sending slash-like commands to a channel
  * and waiting for a response from a target bot (e.g., Unusual Whales bot).
  */
@@ -28,6 +33,9 @@ const TARGET_BOT_USER_ID = process.env.UNUSUAL_WHALES_DISCORD_BOT_ID; // The res
 let sharedClient: Client | null = null;
 
 function getClient(): Client {
+  if (typeof process === 'undefined' || process.release?.name !== 'node') {
+    throw new Error('discord-client can only run in a Node.js server environment');
+  }
   if (sharedClient) return sharedClient;
   if (!BOT_TOKEN) throw new Error('DISCORD_BOT_TOKEN missing');
 
@@ -139,8 +147,8 @@ let alertConfig: DiscordAlertConfig = {
   strategies: ['big-money','aggressive-short-term']
 };
 
-export function getDiscordAlertConfig(): DiscordAlertConfig { return { ...alertConfig }; }
-export function updateDiscordAlertConfig(patch: Partial<DiscordAlertConfig>): DiscordAlertConfig {
+export async function getDiscordAlertConfig(): Promise<DiscordAlertConfig> { return { ...alertConfig }; }
+export async function updateDiscordAlertConfig(patch: Partial<DiscordAlertConfig>): Promise<DiscordAlertConfig> {
   alertConfig = { ...alertConfig, ...patch };
-  return getDiscordAlertConfig();
+  return { ...alertConfig };
 }

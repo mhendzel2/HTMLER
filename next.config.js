@@ -29,6 +29,11 @@ const nextConfig = {
       test: /onnxruntime_binding\.node$/,
       use: 'null-loader'
     });
+    // Provide empty module for optional 'zlib-sync' dependency sometimes attempted by discord.js
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      'zlib-sync': false
+    };
     return config;
   },
   env: {

@@ -156,92 +156,21 @@ export default function WatchlistPage() {
 
   const backgroundUpdateQuotes = async (tickers: string[]) => {
     if (!tickers.length) return;
-    const newQuotes: Record<string, StockQuote> = {};
-    await Promise.all(tickers.map(async (ticker) => {
-      try {
-        const [stateRes, maxPainRes, darkpoolRes, oiRes] = await Promise.all([
-          fetch(`/api/stocks/${ticker}?type=state`),
-          fetch(`/api/options?type=max-pain&ticker=${ticker}`),
-          fetch(`/api/darkpool/${ticker}`),
-          fetch(`/api/options?type=oi-change&ticker=${ticker}`)
-        ]);
-
-        let price = 0, change = 0, changePercent = 0, volume = 0;
-        if (stateRes.ok) {
-          const data = await stateRes.json();
-            const state = data?.data || data;
-            price = state?.last_price ?? 0;
-            change = state?.change ?? 0;
-            changePercent = state?.change_percent ?? 0;
-            volume = state?.volume ?? 0;
-        }
-
-        let maxPain: number | undefined; let nextExpiry: string | undefined;
-        if (maxPainRes.ok) {
-          const mp = await maxPainRes.json();
-          const mpData = mp?.data?.data || mp.data;
-          if (Array.isArray(mpData)) {
-            const today = new Date();
-            const upcoming = mpData.map((d: any) => ({ expiry: d.expiry, maxPain: parseFloat(d.max_pain) }))
-              .filter((d: any) => !isNaN(new Date(d.expiry).getTime()) && new Date(d.expiry) >= today)
-              .sort((a: any, b: any) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
-            if (upcoming.length) { nextExpiry = upcoming[0].expiry; maxPain = upcoming[0].maxPain; }
-          }
-        }
-
-        let atmCallDelta: number | undefined;
-        if (nextExpiry) {
-          const greeksRes = await fetch(`/api/options?type=greeks&ticker=${ticker}&expiry=${nextExpiry}`);
-          if (greeksRes.ok) {
-            const gr = await greeksRes.json();
-            if (Array.isArray(gr.data) && gr.data.length) {
-              const closest = gr.data.reduce((prev: any, curr: any) => (
-                Math.abs(parseFloat(curr.strike) - price) < Math.abs(parseFloat(prev.strike) - price) ? curr : prev
-              ));
-              atmCallDelta = parseFloat(closest.call_delta);
-            }
-          }
-        }
-
-        let darkpoolPremium: number | undefined;
-        if (darkpoolRes.ok) {
-          const dp = await darkpoolRes.json();
-          const dpData = dp?.data?.data || dp.data;
-          if (Array.isArray(dpData)) {
-            darkpoolPremium = dpData.reduce((sum: number, trade: any) => sum + parseFloat(trade.premium || '0'), 0);
-          }
-        }
-
-        let oiChange: number | undefined;
-        if (oiRes.ok) {
-          const oi = await oiRes.json();
-          const oiData = oi?.data?.data || oi.data;
-          if (Array.isArray(oiData)) {
-            oiChange = oiData.reduce((sum: number, item: any) => sum + (item.oi_diff_plain || 0), 0);
-          }
-        }
-
-        newQuotes[ticker] = {
-          ticker,
-          price,
-          change,
-          changePercent,
-          volume,
-          maxPain,
-          nextExpiry,
-          darkpoolPremium,
-          oiChange,
-          atmCallDelta,
-          updatedAt: Date.now(),
-        };
-      } catch (e) {
-        console.error('Quote update failed for', ticker, e);
+    try {
+      const resp = await fetch(`/api/watchlist/quotes?tickers=${encodeURIComponent(tickers.join(','))}`);
+      if (!resp.ok) return;
+      const json = await resp.json();
+      const arr = json.data || [];
+      const map: Record<string, StockQuote> = {};
+      arr.forEach((q: any) => {
+        map[q.ticker] = { ...q, changePercent: q.changePercent, updatedAt: q.updatedAt || Date.now() };
+      });
+      if (Object.keys(map).length) {
+        setStockQuotes(prev => ({ ...prev, ...map }));
+        persistQuotes(map);
       }
-    }));
-
-    if (Object.keys(newQuotes).length) {
-      setStockQuotes(prev => ({ ...prev, ...newQuotes }));
-      persistQuotes(newQuotes);
+    } catch (e) {
+      console.error('Batch quote update failed', e);
     }
   };
 
@@ -439,10 +368,15 @@ export default function WatchlistPage() {
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                          <span className="font-bold text-blue-600 dark:text-blue-400">
+                        <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900 rounded-lg flex flex-col items-center justify-center text-center p-1">
+                          <span className="font-bold text-blue-600 dark:text-blue-400 text-sm">
                             {ticker}
                           </span>
+                          {quote?.maxPain !== undefined && (
+                            <span className="text-[10px] text-gray-600 dark:text-gray-300 mt-0.5">
+                              MP {quote.maxPain.toFixed(2)}
+                            </span>
+                          )}
                         </div>
                         
                         <div>
