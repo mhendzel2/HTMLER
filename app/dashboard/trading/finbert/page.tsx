@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { analyzeSentiment } from '@/lib/finbert-local';
+// Alias model inference to avoid name collision with UI handler
+import { analyzeSentiment as runFinbertSentiment } from '@/lib/finbert-local';
 import { Header } from '@/components/dashboard/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +52,9 @@ interface FinBERTAlert {
   actionRequired: boolean;
 }
 
+// Raw FinBERT pipeline output element
+interface FinBertRawResult { label: string; score: number; }
+
 export default function FinBERTAnalysisPage() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -83,13 +87,14 @@ export default function FinBERTAnalysisPage() {
 
     const analyses: SentimentAnalysis[] = [];
     for (const symbol of popularSymbols) {
-      const result = await analyzeSentiment(`${symbol} stock`);
-      const label = result[0]?.label?.toLowerCase() || 'neutral';
+      const arr = await runFinbertSentiment(`${symbol} stock`) as FinBertRawResult[];
+      const primary = arr[0];
+      const label = (primary?.label || 'neutral').toLowerCase();
       analyses.push({
         symbol,
         sentiment: label === 'positive' ? 'bullish' : label === 'negative' ? 'bearish' : 'neutral',
-        confidence: Math.floor(result[0]?.score * 100) || 0,
-        score: result[0]?.score || 0,
+        confidence: primary?.score ? Math.round(primary.score * 100) : 0,
+        score: primary?.score || 0,
         headlines: generateMockHeadlines(symbol),
         lastUpdated: new Date().toISOString(),
         tradingSignal: label === 'positive' ? 'BUY' : label === 'negative' ? 'SELL' : 'HOLD',
@@ -158,7 +163,8 @@ export default function FinBERTAnalysisPage() {
     setTrendingSymbols(symbols.slice(0, 5));
   };
 
-  const analyzeSentiment = async (symbol: string) => {
+  // User-triggered (mock) analysis; real model call already used in initial load
+  const analyzeSymbolSentiment = async (symbol: string) => {
     if (!symbol) return;
 
     setAnalyzing(true);
@@ -269,11 +275,11 @@ export default function FinBERTAnalysisPage() {
                   placeholder="Enter stock symbol (e.g., AAPL)"
                   value={searchSymbol}
                   onChange={(e) => setSearchSymbol(e.target.value.toUpperCase())}
-                  onKeyPress={(e) => e.key === 'Enter' && analyzeSentiment(searchSymbol)}
+                  onKeyPress={(e) => e.key === 'Enter' && analyzeSymbolSentiment(searchSymbol)}
                 />
               </div>
               <Button 
-                onClick={() => analyzeSentiment(searchSymbol)}
+                onClick={() => analyzeSymbolSentiment(searchSymbol)}
                 disabled={analyzing || !searchSymbol}
                 size="default"
               >
@@ -300,7 +306,7 @@ export default function FinBERTAnalysisPage() {
                     key={symbol}
                     variant="outline" 
                     size="sm"
-                    onClick={() => analyzeSentiment(symbol)}
+                    onClick={() => analyzeSymbolSentiment(symbol)}
                     disabled={analyzing}
                   >
                     {symbol}
@@ -396,7 +402,7 @@ export default function FinBERTAnalysisPage() {
                         <Button 
                           size="sm" 
                           variant="outline"
-                          onClick={() => analyzeSentiment(analysis.symbol)}
+                          onClick={() => analyzeSymbolSentiment(analysis.symbol)}
                           disabled={analyzing}
                         >
                           Refresh Analysis

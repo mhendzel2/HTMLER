@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         );
       });
 
-      ib.once(EventName.error, (err) => {
+  ib.once(EventName.error, (err: unknown) => {
         clearTimeout(timeout);
         ib.disconnect();
         resolve(

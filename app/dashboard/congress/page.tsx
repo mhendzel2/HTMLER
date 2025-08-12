@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { RefreshCw, Search, TrendingUp, TrendingDown, Users } from 'lucide-react';
+import { RefreshCw, Search, TrendingUp, TrendingDown, Users, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CongressTrade {
@@ -29,6 +29,20 @@ interface TopTickerData {
   avg_value: number;
 }
 
+interface FlowAlert {
+  ticker?: string;
+  underlying_symbol?: string;
+  total_premium?: number;
+  volume?: number;
+  executed_at?: number;
+  created_at?: number;
+  expiry?: string;
+  strike?: number;
+  type?: string;
+  filter_matches?: string[];
+  source?: string;
+}
+
 export default function CongressPage() {
   const [trades, setTrades] = useState<CongressTrade[]>([]);
   const [topTickers, setTopTickers] = useState<TopTickerData[]>([]);
@@ -37,6 +51,33 @@ export default function CongressPage() {
   const [searchMember, setSearchMember] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const [flowAlerts, setFlowAlerts] = useState<FlowAlert[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [alertPage, setAlertPage] = useState(0);
+  const [alertHasMore, setAlertHasMore] = useState(true);
+  const [minPremium, setMinPremium] = useState(25000);
+  const [lookbackMinutes, setLookbackMinutes] = useState(360); // 6 hours
+  const [alertsMeta, setAlertsMeta] = useState<any>(null);
+  const [searchDebounceTimer, setSearchDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+
+  const fetchFlowAlerts = async (page = 0, append = false) => {
+    try {
+      setAlertsLoading(true);
+      const symbols = searchTicker ? encodeURIComponent(searchTicker.toUpperCase()) : '';
+      const resp = await fetch(`/api/alerts/flow?symbols=${symbols}&limit=40&since_minutes=${lookbackMinutes}&min_premium=${minPremium}&page=${page}`);
+      if (resp.ok) {
+        const json = await resp.json();
+        const data: FlowAlert[] = json.data || [];
+        setAlertHasMore(data.length > 0);
+        setFlowAlerts(prev => append ? [...prev, ...data] : data);
+        setAlertsMeta(json.metadata || null);
+      }
+    } catch (e) {
+      console.error('Failed to fetch flow alerts for congress page', e);
+    } finally {
+      setAlertsLoading(false);
+    }
+  };
 
   const fetchCongressData = async () => {
     try {
@@ -60,6 +101,8 @@ export default function CongressPage() {
         const topTickersData = await topTickersResponse.json();
         setTopTickers(topTickersData.data || []);
       }
+  // Also fetch related flow alerts
+  fetchFlowAlerts(0, false);
     } catch (error) {
       console.error('Error fetching congress data:', error);
     } finally {
@@ -88,7 +131,12 @@ export default function CongressPage() {
   }, [autoRefresh]);
 
   const handleSearch = () => {
-    fetchCongressData();
+    // Debounce to avoid multiple rapid requests
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    const t = setTimeout(() => {
+      fetchCongressData();
+    }, 400);
+    setSearchDebounceTimer(t);
   };
 
   const getTransactionTypeColor = (type?: string | null) => {
@@ -166,10 +214,11 @@ export default function CongressPage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="recent-trades" className="space-y-4">
+    <Tabs defaultValue="recent-trades" className="space-y-4">
         <TabsList>
           <TabsTrigger value="recent-trades">Recent Trades</TabsTrigger>
           <TabsTrigger value="top-tickers">Top Traded Tickers</TabsTrigger>
+          <TabsTrigger value="flow-alerts">Related Flow Alerts</TabsTrigger>
         </TabsList>
 
         <TabsContent value="recent-trades" className="space-y-4">
@@ -270,6 +319,114 @@ export default function CongressPage() {
                         </CardContent>
                       </Card>
                     ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="flow-alerts" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Related Options Flow Alerts</CardTitle>
+              <CardDescription>
+                High-premium options activity (custom lookback){searchTicker && ` for ${searchTicker.toUpperCase()}`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Controls */}
+                <div className="flex flex-wrap gap-4 items-end">
+                  <div className="flex flex-col">
+                    <label className="text-xs font-medium mb-1">Min Premium ($)</label>
+                    <input
+                      type="number"
+                      className="border rounded px-2 py-1 text-sm w-32"
+                      value={minPremium}
+                      min={0}
+                      step={5000}
+                      aria-label="Minimum premium filter"
+                      onChange={(e) => setMinPremium(parseInt(e.target.value || '0'))}
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-xs font-medium mb-1">Lookback (min)</label>
+                    <input
+                      type="number"
+                      className="border rounded px-2 py-1 text-sm w-32"
+                      value={lookbackMinutes}
+                      min={15}
+                      max={1440}
+                      step={15}
+                      aria-label="Lookback minutes filter"
+                      onChange={(e) => setLookbackMinutes(parseInt(e.target.value || '0'))}
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={alertsLoading}
+                    onClick={() => { setAlertPage(0); fetchFlowAlerts(0, false); }}
+                  >
+                    {alertsLoading ? 'Updating...' : 'Apply'}
+                  </Button>
+                  {alertsMeta && (
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <div>
+                        Updated: {new Date(alertsMeta.timestamp).toLocaleTimeString()} {alertsMeta.cache && '(cache)'}
+                      </div>
+                      <div>
+                        Count: {alertsMeta.total_alerts} • Pool: {alertsMeta.pool_considered}
+                      </div>
+                      <div>
+                        Filters: ≥ ${minPremium.toLocaleString()} • {Math.round(lookbackMinutes/60*10)/10}h
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {alertsLoading && flowAlerts.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Activity className="h-6 w-6 animate-spin mx-auto mb-4" />
+                    <p>Loading flow alerts...</p>
+                  </div>
+                ) : flowAlerts.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No flow alerts found for criteria.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {flowAlerts.map((a, idx) => {
+                      const sym = (a.underlying_symbol || a.ticker || '').toUpperCase();
+                      const ts = new Date((a.executed_at || a.created_at || 0));
+                      return (
+                        <div key={idx} className="p-3 border rounded-lg flex justify-between items-center">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="outline" className="font-mono">{sym}</Badge>
+                              {a.type && a.strike && a.expiry && (
+                                <span className="text-sm">{a.type.toUpperCase()} {a.strike} {a.expiry}</span>
+                              )}
+                              {a.filter_matches?.map(f => (
+                                <Badge key={f} variant="secondary" className="text-xxs">{f}</Badge>
+                              ))}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Premium ${(a.total_premium || 0).toLocaleString()} • Vol {a.volume} • {ts.toLocaleTimeString()}
+                            </div>
+                          </div>
+                          <div className="text-right text-xs text-muted-foreground">
+                            src: {a.source || 'api'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {alertHasMore && (
+                      <div className="flex justify-center pt-2">
+                        <Button variant="outline" size="sm" disabled={alertsLoading} onClick={() => { const next = alertPage + 1; setAlertPage(next); fetchFlowAlerts(next, true); }}>
+                          {alertsLoading ? 'Loading...' : 'Load More'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

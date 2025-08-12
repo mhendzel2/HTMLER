@@ -1,5 +1,6 @@
 
 import { NextRequest } from 'next/server';
+import { fetchCongressTradesFromDiscord, fetchTopTradedTickersFromDiscord, fetchFlowAlertsFromDiscord } from './discord-client';
 
 const API_BASE_URL = process.env.UNUSUAL_WHALES_API_BASE_URL || 'https://api.unusualwhales.com';
 const API_KEY = process.env.UNUSUAL_WHALES_API_KEY;
@@ -283,6 +284,37 @@ export class UnusualWhalesAPI {
     return this.makeRequest('/option-trades/flow-alerts', { params });
   }
 
+  // Attempt to fetch paginated flow alerts (assumes API supports 'page' param)
+  async getFlowAlertsPaged(page: number = 0, limit: number = 100) {
+    const params: Record<string, string | number> = { limit, page };
+    return this.makeRequest('/option-trades/flow-alerts', { params });
+  }
+
+  // Fetch flow alerts since a unix ms timestamp by paginating until cutoff reached or max pages traversed
+  async getFlowAlertsSince(since: number, maxPages: number = 20, limit: number = 100) {
+    const all: any[] = [];
+    for (let page = 0; page < maxPages; page++) {
+      try {
+        const resp: any = await this.getFlowAlertsPaged(page, limit);
+        const arr = resp?.data?.data || resp?.data || [];
+        if (!Array.isArray(arr) || arr.length === 0) break;
+        for (const item of arr) {
+          const ts = item.executed_at || item.timestamp || item.created_at || 0;
+          if (ts < since) {
+            // Stop early once we hit older items (assumes descending sort)
+            return all;
+          }
+          all.push(item);
+        }
+        // If fewer than limit returned, assume end
+        if (arr.length < limit) break;
+      } catch (e) {
+        break;
+      }
+    }
+    return all;
+  }
+
   async getStockGEX(ticker: string) {
     return this.makeRequest(`/stock/${ticker}/gex`);
   }
@@ -363,7 +395,13 @@ export class UnusualWhalesAPI {
     if (endDate) params.end_date = endDate;
     if (ticker) params.ticker = ticker;
     if (congressMember) params.congress_member = congressMember;
-    return this.makeRequest('/congress/recent-trades', { params });
+    try {
+      return await this.makeRequest('/congress/recent-trades', { params });
+    } catch (err) {
+      console.error('Congress recent trades API failed, Discord fallback engaged:', err);
+      const fallback = await fetchCongressTradesFromDiscord(limit, ticker, congressMember);
+      return { data: { data: fallback, source: 'discord' } } as any;
+    }
   }
 
   async getCongressTopTradedTickers(
@@ -374,7 +412,13 @@ export class UnusualWhalesAPI {
     const params: Record<string, string | number> = { limit };
     if (startDate) params.start_date = startDate;
     if (endDate) params.end_date = endDate;
-    return this.makeRequest('/congress/top-traded-tickers', { params });
+    try {
+      return await this.makeRequest('/congress/top-traded-tickers', { params });
+    } catch (err) {
+      console.error('Congress top traded tickers API failed, Discord fallback engaged:', err);
+      const fallback = await fetchTopTradedTickersFromDiscord(limit);
+      return { data: { data: fallback, source: 'discord' } } as any;
+    }
   }
 
   // Alerts Endpoints
@@ -408,7 +452,15 @@ export class UnusualWhalesAPI {
       params.ticker_symbols = tickerSymbols;
     }
 
-    return this.makeRequest('/alerts', { params });
+    try {
+      return await this.makeRequest('/alerts', { params });
+    } catch (err) {
+      console.error('Alerts API failed, Discord fallback engaged:', err);
+      const symbols = (tickerSymbols || '').split(',').map(s => s.trim()).filter(Boolean);
+      if (!symbols.length) return { data: { data: [], source: 'discord', note: 'No symbols provided for fallback' } } as any;
+      const fallback = await fetchFlowAlertsFromDiscord(symbols, limit);
+      return { data: { data: fallback, source: 'discord' } } as any;
+    }
   }
 
   async getAlertConfigurations() {

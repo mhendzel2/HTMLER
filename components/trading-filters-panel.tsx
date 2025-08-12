@@ -53,9 +53,13 @@ export default function TradingFiltersPanel() {
 
     // Test WebSocket access
     testWebSocketAccess();
-
-    // Start real-time monitoring
+    // Start real-time monitoring (non-blocking)
     startMonitoring();
+
+    // Load historical alerts (last 5 days) asynchronously
+    tradingFilters.loadHistoricalAlerts(5).then(count => {
+      console.log('Historical alerts processed:', count);
+    });
 
     return () => {
       // Cleanup subscriptions
@@ -81,11 +85,10 @@ export default function TradingFiltersPanel() {
     
     setWsStatus(success ? 'connected' : 'disconnected');
 
-    // Subscribe to each filter
-    filters.forEach(filter => {
-      tradingFilters.subscribeToFilter(filter.id, (alert) => {
-        handleNewAlert(filter, alert);
-      });
+    // Subscribe to each filter (use latest filters state)
+    const currentFilters = tradingFilters.getAvailableFilters();
+    currentFilters.forEach(filter => {
+      tradingFilters.subscribeToFilter(filter.id, (alert) => handleNewAlert(filter, alert));
     });
 
     // Monitor WebSocket status

@@ -238,6 +238,35 @@ export class TradingFilterSystem {
   }
 
   /**
+   * Load historical flow alerts up to lookbackDays (default 5) days back and feed through filters.
+   * Uses paginated API until cutoff. Processes in batches to avoid blocking.
+   */
+  async loadHistoricalAlerts(lookbackDays: number = 5): Promise<number> {
+    const since = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+    try {
+      const rawAlerts: any[] = await unusualWhalesAPI.getFlowAlertsSince(since, 50, 100);
+      let processed = 0;
+      for (const raw of rawAlerts) {
+        const normalized = this.normalizeFlowAlert(raw);
+        // Only process if timestamp within window (defensive)
+        if (normalized.timestamp >= since) {
+          this.processFlowAlert(normalized);
+          processed++;
+        }
+        // Yield to event loop periodically
+        if (processed % 250 === 0) {
+          await new Promise(res => setTimeout(res, 0));
+        }
+      }
+      console.log(`📚 Historical alerts loaded: ${processed}`);
+      return processed;
+    } catch (e) {
+      console.error('Failed loading historical alerts', e);
+      return 0;
+    }
+  }
+
+  /**
    * Fallback polling mode when WebSocket is not available
    */
   private startPollingMode(): void {

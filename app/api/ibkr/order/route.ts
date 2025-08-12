@@ -23,9 +23,8 @@ export async function POST(request: NextRequest) {
     });
     
     if (order.source === 'IBKR') {
-      const result = await submitToIBKR(order);
-      // If IBKR submission failed and requests fallback, simulate virtual trade
-      if (!result.success && (result as any).fallbackToVirtual) {
+      const result: any = await submitToIBKR(order);
+      if (!result.success && result.fallbackToVirtual) {
         const virtualResult = await simulateVirtualOrder(order);
         return NextResponse.json(virtualResult);
       }
