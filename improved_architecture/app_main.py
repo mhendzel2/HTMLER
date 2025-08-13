@@ -1,9 +1,10 @@
 import asyncio
 import logging
-import argparse
+import streamlit as st
 from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Any
 
-from .services.api_service import api_service, APIResponse
+from improved_architecture.services.api_service import api_service, APIResponse
 
 # --- Configuration ---
 # Configure logging
@@ -15,7 +16,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-POLL_INTERVAL_SECONDS = 300  # 5 minutes
 COMMON_ETFS = {"SPY", "QQQ", "IWM", "DIA", "VOO", "VTI"}
 
 class TradeAlertMonitor:
@@ -26,35 +26,26 @@ class TradeAlertMonitor:
     def __init__(self):
         self.api_service = api_service
 
-    async def run(self):
-        """Main loop to run the monitoring process."""
-        logger.info("Starting trade alert monitor...")
-        logger.info("Running alert checks...")
-        try:
-            await self.check_for_alerts()
-        except Exception as e:
-            logger.error(f"An error occurred during alert checking: {e}", exc_info=True)
+    async def run_checks(self) -> (List[Dict[str, Any]], List[Dict[str, Any]]):
+        """Runs all alert checks and returns the results."""
+        alpha_alerts = await self.check_alpha_predator_alerts()
+        dark_pool_alerts = await self.check_dark_pool_divergence_alerts()
+        return alpha_alerts, dark_pool_alerts
 
-        logger.info("Monitoring check finished.")
-
-    async def check_for_alerts(self):
-        """Checks for all defined alert types."""
-        await self.check_alpha_predator_alerts()
-        await self.check_dark_pool_divergence_alerts()
-
-    async def check_dark_pool_divergence_alerts(self):
+    async def check_dark_pool_divergence_alerts(self) -> List[Dict[str, Any]]:
         """
-        Checks for 'Dark Pool Divergence' alerts.
+        Checks for 'Dark Pool Divergence' alerts and returns them.
         """
         logger.info("Checking for 'Dark Pool Divergence' alerts...")
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        alerts = []
 
         async with self.api_service as service:
             response = await service.get_dark_pool_trades(date=today, min_premium=1000000, limit=100)
 
             if not response.success or not response.data.get('data'):
-                logger.error(f"Failed to get dark pool trades: {response.error}")
-                return
+                st.error(f"Failed to get dark pool trades: {response.error}")
+                return alerts
 
             trades = response.data['data']
 
@@ -66,54 +57,48 @@ class TradeAlertMonitor:
 
                     premium = float(trade.get('premium', 0))
 
-                    # Now get options flow for this ticker
                     options_response = await service.get_options_flow(ticker=ticker, date=today, limit=500)
                     if not options_response.success or not options_response.data.get('data'):
                         continue
 
                     options_trades = options_response.data['data']
 
-                    # Analyze options flow for bullish signs
                     total_call_premium = sum(float(t.get('premium', 0)) for t in options_trades if t.get('option_type') == 'call')
                     total_put_premium = sum(float(t.get('premium', 0)) for t in options_trades if t.get('option_type') == 'put')
 
-                    if total_put_premium == 0:
-                        call_put_ratio = float('inf')
-                    else:
-                        call_put_ratio = total_call_premium / total_put_premium
-
-                    # Look for aggressive call buying
+                    call_put_ratio = float('inf') if total_put_premium == 0 else total_call_premium / total_put_premium
                     bullish_sweeps = sum(1 for t in options_trades if t.get('option_type') == 'call' and t.get('order_type') == 'sweep' and t.get('side') == 'ask')
 
                     if call_put_ratio > 5.0 and bullish_sweeps > 5:
-                        logger.info(f"DARK POOL DIVERGENCE ALERT: {ticker}")
-                        logger.info(f"  Large Dark Pool Print: ${premium:,.2f}")
-                        logger.info(f"  Bullish Options Flow:")
-                        logger.info(f"    Call/Put Premium Ratio: {call_put_ratio:.2f}")
-                        logger.info(f"    Aggressive Call Sweeps: {bullish_sweeps}")
-                        logger.info("-" * 30)
+                        alert = {
+                            "ticker": ticker,
+                            "dark_pool_premium": f"${premium:,.2f}",
+                            "call_put_ratio": f"{call_put_ratio:.2f}",
+                            "bullish_sweeps": bullish_sweeps,
+                        }
+                        alerts.append(alert)
+                        logger.info(f"DARK POOL DIVERGENCE ALERT: {alert}")
 
                 except (ValueError, TypeError, KeyError) as e:
                     logger.error(f"Error processing dark pool trade: {trade}. Error: {e}")
+        return alerts
 
-    async def check_alpha_predator_alerts(self):
+    async def check_alpha_predator_alerts(self) -> List[Dict[str, Any]]:
         """
-        Checks for the 'Alpha Predator' bullish swing trade alerts using the new
-        hottest chains approach.
+        Checks for the 'Alpha Predator' bullish swing trade alerts and returns them.
         """
         logger.info("Checking for 'Alpha Predator' alerts...")
+        alerts = []
 
         async with self.api_service as service:
-            # 1. Get hottest chains
             hottest_chains_response = await service.get_hottest_chains(limit=50)
             if not hottest_chains_response.success or not hottest_chains_response.data.get('data'):
-                logger.error(f"Failed to get hottest chains: {hottest_chains_response.error}")
-                return
+                st.error(f"Failed to get hottest chains: {hottest_chains_response.error}")
+                return alerts
 
             hottest_chains = hottest_chains_response.data['data']
             tickers = {chain.get('ticker') for chain in hottest_chains if chain.get('ticker')}
 
-            # 2. For each hot ticker, get its options flow
             for ticker in tickers:
                 if ticker in COMMON_ETFS:
                     continue
@@ -124,7 +109,6 @@ class TradeAlertMonitor:
 
                 trades = options_flow_response.data['data']
 
-                # 3. Apply filters to the trades
                 for trade in trades:
                     try:
                         if trade.get('side') != 'ask' or trade.get('order_type') != 'sweep':
@@ -157,29 +141,48 @@ class TradeAlertMonitor:
                         open_interest = int(historic_data.get('open_interest', 0))
 
                         if open_interest > 0 and (volume / open_interest) > 2:
-                            logger.info(f"ALPHA PREDATOR ALERT: {trade['ticker']}")
-                            logger.info(f"  Contract: {contract_id}")
-                            logger.info(f"  Premium: ${premium:,.2f}")
-                            logger.info(f"  DTE: {dte}")
-                            logger.info(f"  Vol/OI: {volume / open_interest:.2f} ({volume}/{open_interest})")
-                            logger.info("-" * 30)
+                            alert = {
+                                "ticker": trade['ticker'],
+                                "contract": contract_id,
+                                "premium": f"${premium:,.2f}",
+                                "dte": dte,
+                                "vol_oi_ratio": f"{volume / open_interest:.2f}",
+                                "volume": volume,
+                                "open_interest": open_interest,
+                            }
+                            alerts.append(alert)
+                            logger.info(f"ALPHA PREDATOR ALERT: {alert}")
 
                     except (ValueError, TypeError, KeyError) as e:
                         logger.error(f"Error processing trade for {ticker}: {trade}. Error: {e}")
+        return alerts
 
-async def main():
-    """Main function to run the trade alert monitor."""
-    parser = argparse.ArgumentParser(description="Unusual Whales Trade Alert Monitor")
-    # Add any command-line arguments if needed in the future
-    args = parser.parse_args()
+def display_alerts(title: str, alerts: List[Dict[str, Any]]):
+    """Displays a list of alerts in Streamlit."""
+    st.subheader(title)
+    if not alerts:
+        st.info("No alerts found.")
+        return
 
-    monitor = TradeAlertMonitor()
-    await monitor.run()
+    for alert in alerts:
+        with st.expander(f"{alert['ticker']}"):
+            st.json(alert)
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Trade alert monitor stopped by user.")
-    except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
+# --- Streamlit App ---
+st.set_page_config(page_title="Unusual Whales Trade Alert Monitor", layout="wide")
+st.title("📈 Unusual Whales Trade Alert Monitor")
+st.caption("A standalone tool to monitor trade alerts based on custom strategies.")
+
+monitor = TradeAlertMonitor()
+
+if st.button("🚀 Scan for Trade Alerts", type="primary"):
+    with st.spinner("Scanning for alerts... This may take a moment."):
+        alpha_alerts, dark_pool_alerts = asyncio.run(monitor.run_checks())
+
+    st.success("Scan complete!")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        display_alerts("🦁 Alpha Predator Alerts", alpha_alerts)
+    with col2:
+        display_alerts("🌊 Dark Pool Divergence Alerts", dark_pool_alerts)
