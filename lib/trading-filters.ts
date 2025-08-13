@@ -90,6 +90,13 @@ export class TradingFilterSystem {
   private alertSubscriptions: Map<string, (alert: FlowAlert) => void> = new Map();
   private gexSubscriptions: Map<string, (gex: GEXData) => void> = new Map();
   private debugRecent: ProcessedAlertDebug[] = [];
+  // Alert retention (last 5 days only)
+  private retainedAlerts: FlowAlert[] = [];
+  private retentionDays = 5;
+  // Training mode state
+  private trainingMode = false;
+  private trainingExecutions: Array<{ id: string; alert: FlowAlert; decidedAt: number; orderId?: string; fillPrice?: number; status: string }>=[];
+  private riskConfig = { maxPerTradeUSD: 5000, maxOpenTrades: 10 };
 
   static getInstance(): TradingFilterSystem {
     if (!TradingFilterSystem.instance) {
@@ -252,6 +259,8 @@ export class TradingFilterSystem {
     });
 
     console.log('Real-time monitoring started.');
+  // Kick off historical backpopulation for retention window
+  this.backpopulateIfEmpty().catch(e=>console.warn('Backpopulation failed', e));
     return true;
   }
 
@@ -299,6 +308,13 @@ export class TradingFilterSystem {
     } catch (e) {
       console.error('Failed loading historical alerts', e);
       return 0;
+    }
+  }
+
+  /** Ensure we have historical data loaded for retention window */
+  private async backpopulateIfEmpty(): Promise<void> {
+    if (this.retainedAlerts.length === 0) {
+      await this.loadHistoricalAlerts(this.retentionDays);
     }
   }
 
@@ -352,6 +368,18 @@ export class TradingFilterSystem {
    * Process incoming flow alert against all active filters
    */
   private processFlowAlert(alert: FlowAlert): void {
+    // Retention management: add & prune > retentionDays
+    this.retainedAlerts.push(alert);
+    const cutoff = Date.now() - this.retentionDays*24*60*60*1000;
+    if (this.retainedAlerts.length > 50000) { // soft cap
+      this.retainedAlerts = this.retainedAlerts.filter(a=>a.timestamp >= cutoff);
+    } else {
+      // Fast prune head if oldest beyond cutoff
+      while (this.retainedAlerts.length && this.retainedAlerts[0].timestamp < cutoff) {
+        this.retainedAlerts.shift();
+      }
+    }
+
     for (const [filterId, filter] of this.activeFilters) {
       if (!filter.enabled) {
         continue;
@@ -362,6 +390,10 @@ export class TradingFilterSystem {
         const callback = this.alertSubscriptions.get(filterId);
         if (callback) {
           callback(alert);
+        }
+        // Training mode auto-execution (paper) respecting risk limits
+        if (this.trainingMode) {
+          this.maybeExecuteTrainingTrade(alert, filterId);
         }
       }
     }
@@ -767,6 +799,51 @@ export class TradingFilterSystem {
 
   getDebugRecent(): ProcessedAlertDebug[] { return this.debugRecent.slice().reverse(); }
   getFilters(): any[] { return this.getAvailableFilters().map(f => ({ id: f.id, enabled: f.enabled, criteria: f.criteria })); }
+  getRetainedAlerts(): FlowAlert[] { return this.retainedAlerts.filter(a=> a.timestamp >= Date.now()-this.retentionDays*24*60*60*1000); }
+
+  /** Training mode controls */
+  enableTrainingMode(risk?: Partial<{ maxPerTradeUSD: number; maxOpenTrades: number }>): void { if (risk) this.riskConfig = { ...this.riskConfig, ...risk }; this.trainingMode = true; }
+  disableTrainingMode(): void { this.trainingMode = false; }
+  isTrainingMode(): boolean { return this.trainingMode; }
+  getTrainingExecutions(): typeof this.trainingExecutions { return this.trainingExecutions.slice().reverse(); }
+
+  /** Internal: simulate trade execution for training */
+  private maybeExecuteTrainingTrade(alert: FlowAlert, filterId: string) {
+    // Simple sizing: allocate up to maxPerTradeUSD / underlying_price shares equivalent (placeholder)
+    if (this.trainingExecutions.length >= this.riskConfig.maxOpenTrades) return;
+    const notional = Math.min(alert.premium || 0, this.riskConfig.maxPerTradeUSD);
+    if (notional <= 0) return;
+    const exec = {
+      id: 'train_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+      alert,
+      decidedAt: Date.now(),
+      status: 'FILLED',
+      orderId: undefined as string|undefined,
+      fillPrice: alert.price || alert.premium/ (alert.size||1)
+    };
+    this.trainingExecutions.push(exec);
+    if (this.trainingExecutions.length > 10000) this.trainingExecutions.shift();
+    // Persist to disk server-side for ML (best-effort)
+    if (typeof window === 'undefined') {
+      (async () => {
+        try {
+          const fs = await import('fs/promises');
+          const path = await import('path');
+          const dir = path.join(process.cwd(), 'data', 'training');
+          try { await fs.mkdir(dir, { recursive: true }); } catch {}
+          const file = path.join(dir, 'executions.json');
+          // Append-friendly: read existing (bounded)
+          let existing: any[] = [];
+            try { const raw = await fs.readFile(file, 'utf-8'); existing = JSON.parse(raw); } catch {}
+          existing.push(exec);
+          if (existing.length > 50000) existing = existing.slice(-50000);
+          await fs.writeFile(file, JSON.stringify(existing, null, 2));
+        } catch (e) {
+          // Non-fatal persistence error
+        }
+      })();
+    }
+  }
 }
 
 export const tradingFilters = TradingFilterSystem.getInstance();
