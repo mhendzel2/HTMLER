@@ -21,6 +21,12 @@ import {
   Target,
   Zap
 } from 'lucide-react';
+import {
+  Pencil,
+  Trash2,
+  PlusCircle
+} from 'lucide-react';
+import { CustomFilterForm } from './custom-filter-form';
 import { 
   tradingFilters, 
   type BigMoneyFilter, 
@@ -40,6 +46,8 @@ export default function TradingFiltersPanel() {
   const [filters, setFilters] = useState<BigMoneyFilter[]>([]);
   const [recentAlerts, setRecentAlerts] = useState<FilterAlert[]>([]);
   const [wsStatus, setWsStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
+  const [isFilterFormOpen, setIsFilterFormOpen] = useState(false);
+  const [editingFilter, setEditingFilter] = useState<BigMoneyFilter | null>(null);
   const [wsAccessible, setWsAccessible] = useState<boolean | null>(null);
   const [selectedTicker, setSelectedTicker] = useState<string>('');
   const [gexData, setGexData] = useState<GEXData | null>(null);
@@ -48,8 +56,7 @@ export default function TradingFiltersPanel() {
 
   useEffect(() => {
     // Initialize filters
-    const availableFilters = tradingFilters.getAvailableFilters();
-    setFilters(availableFilters);
+    refreshFilters();
 
     // Test WebSocket access
     testWebSocketAccess();
@@ -68,6 +75,35 @@ export default function TradingFiltersPanel() {
       });
     };
   }, []);
+
+  const refreshFilters = () => {
+    const availableFilters = tradingFilters.getAvailableFilters();
+    setFilters(availableFilters);
+  };
+
+  const handleSaveFilter = (filterData: Omit<BigMoneyFilter, 'id' | 'isCustom' | 'isPreset'>, id?: string) => {
+    if (id) {
+      // Updating existing filter
+      tradingFilters.updateFilterCriteria(id, filterData.criteria);
+      // Also update name/description if needed
+      const oldFilter = filters.find(f => f.id === id);
+      if (oldFilter) {
+        oldFilter.name = filterData.name;
+        oldFilter.description = filterData.description;
+      }
+    } else {
+      // Creating new filter
+      tradingFilters.addCustomFilter(filterData);
+    }
+    refreshFilters();
+  };
+
+  const handleDeleteFilter = (filterId: string) => {
+    if (window.confirm('Are you sure you want to delete this custom filter?')) {
+      tradingFilters.deleteCustomFilter(filterId);
+      refreshFilters();
+    }
+  };
 
   const testWebSocketAccess = async () => {
     const accessTest = await unusualWhalesWS.testWebSocketAccess();
@@ -176,6 +212,12 @@ export default function TradingFiltersPanel() {
 
   return (
     <div className="space-y-6">
+      <CustomFilterForm
+        isOpen={isFilterFormOpen}
+        onClose={() => setIsFilterFormOpen(false)}
+        filter={editingFilter}
+        onSave={handleSaveFilter}
+      />
       {/* Status Header */}
       <Card>
         <CardHeader className="pb-3">
@@ -216,108 +258,6 @@ export default function TradingFiltersPanel() {
             </div>
           </div>
           
-          {/* Debug Section */}
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-            <div className="text-sm font-medium text-gray-600 mb-2">🧪 Debug & Testing</div>
-            <div className="flex flex-wrap gap-2">
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={() => {
-                  console.log('🔴 BUTTON CLICKED: Simple test');
-                  alert('Simple test button works!');
-                }}
-                className="text-xs"
-              >
-                Test Button Click
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={() => {
-                  console.log('🔴 Inject Mock Alerts button clicked!');
-                  alert('Testing Inject Mock Alerts - check console');
-                  try {
-                    injectMockFlowAlerts();
-                  } catch (error) {
-                    console.error('Error calling injectMockFlowAlerts:', error);
-                    alert('Error: ' + error);
-                  }
-                }}
-                className="text-xs"
-              >
-                Inject Mock Alerts
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={() => {
-                  console.log('🔴 Test Big Money button clicked!');
-                  alert('Testing Big Money Filter - check console');
-                  try {
-                    testBigMoneyFilter();
-                  } catch (error) {
-                    console.error('Error calling testBigMoneyFilter:', error);
-                    alert('Error: ' + error);
-                  }
-                }}
-                className="text-xs"
-              >
-                Test Big Money ($750K)
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={() => {
-                  console.log('🔴 Test Dark Pool button clicked!');
-                  alert('Testing Dark Pool Filter - check console');
-                  try {
-                    testDarkPoolFilter();
-                  } catch (error) {
-                    console.error('Error calling testDarkPoolFilter:', error);
-                    alert('Error: ' + error);
-                  }
-                }}
-                className="text-xs"
-              >
-                Test Dark Pool ($300K)
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={() => {
-                  console.log('🔴 Test Short-Term button clicked!');
-                  alert('Testing Short-Term Filter - check console');
-                  try {
-                    testAggressiveShortTermFilter();
-                  } catch (error) {
-                    console.error('Error calling testAggressiveShortTermFilter:', error);
-                    alert('Error: ' + error);
-                  }
-                }}
-                className="text-xs"
-              >
-                Test Short-Term ($150K)
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={() => {
-                  console.log('🔴 Test Small Alert button clicked!');
-                  alert('Testing Small Alert - check console');
-                  try {
-                    testSmallAlert();
-                  } catch (error) {
-                    console.error('Error calling testSmallAlert:', error);
-                    alert('Error: ' + error);
-                  }
-                }}
-                className="text-xs"
-              >
-                Test Small Alert ($25K)
-              </Button>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
@@ -331,24 +271,43 @@ export default function TradingFiltersPanel() {
 
         {/* Filters Tab */}
         <TabsContent value="filters">
+          <div className="flex justify-end mb-4">
+            <Button onClick={() => { setEditingFilter(null); setIsFilterFormOpen(true); }}>
+              <PlusCircle className="mr-2 h-4 w-4" /> Create New Filter
+            </Button>
+          </div>
           <div className="grid gap-4">
             {filters.map((filter) => (
               <Card key={filter.id} className={filter.enabled ? 'border-green-200' : 'border-gray-200'}>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="flex-1">
                       <CardTitle className="text-lg flex items-center gap-2">
                         {filter.name}
-                        {filter.enabled && <Badge variant="outline" className="text-xs">ACTIVE</Badge>}
+                        {filter.isPreset && <Badge variant="secondary" className="text-xs">PRESET</Badge>}
+                        {filter.isCustom && <Badge variant="outline" className="text-xs">CUSTOM</Badge>}
+                        {filter.enabled && <Badge variant="default" className="text-xs bg-green-600">ACTIVE</Badge>}
                       </CardTitle>
                       <CardDescription className="mt-1">
                         {filter.description}
                       </CardDescription>
                     </div>
-                    <Switch
-                      checked={filter.enabled}
-                      onCheckedChange={(checked) => toggleFilter(filter.id, checked)}
-                    />
+                    <div className="flex items-center gap-2">
+                      {filter.isCustom && (
+                        <>
+                          <Button variant="ghost" size="icon" onClick={() => { setEditingFilter(filter); setIsFilterFormOpen(true); }}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteFilter(filter.id)}>
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </>
+                      )}
+                      <Switch
+                        checked={filter.enabled}
+                        onCheckedChange={(checked) => toggleFilter(filter.id, checked)}
+                      />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-0">
