@@ -60,21 +60,25 @@ export default function TradingOverviewPage() {
 
       const savedTrades = localStorage.getItem('trading_history');
       if (savedTrades) {
-        const trades = JSON.parse(savedTrades);
-        const todaysTrades = trades.filter((trade: any) => {
-          const tradeDate = new Date(trade.timestamp).toDateString();
-          const today = new Date().toDateString();
-          return tradeDate === today && trade.status === 'FILLED';
-        });
-        
-        const todaysPnL = todaysTrades.reduce((sum: number, trade: any) => sum + (trade.pnl || 0), 0);
-        const activeTrades = trades.filter((trade: any) => trade.status === 'PENDING').length;
-        
-        setOverview(prev => ({ 
-          ...prev, 
-          todaysPnL,
-          activeTrades
-        }));
+        try {
+          const trades = JSON.parse(savedTrades);
+          const todaysTrades = trades.filter((trade: any) => {
+            const tradeDate = new Date(trade.timestamp).toDateString();
+            const today = new Date().toDateString();
+            return tradeDate === today && trade.status === 'FILLED';
+          });
+
+          const todaysPnL = todaysTrades.reduce((sum: number, trade: any) => sum + (trade.pnl || 0), 0);
+          const activeTrades = trades.filter((trade: any) => trade.status === 'PENDING').length;
+
+          setOverview(prev => ({
+            ...prev,
+            todaysPnL,
+            activeTrades
+          }));
+        } catch (e) {
+          console.error("Failed to parse trading_history from localStorage", e);
+        }
       }
 
       // Check IBKR connection status

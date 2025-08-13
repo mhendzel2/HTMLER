@@ -1,11 +1,12 @@
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { unusualWhalesAPI } from '@/lib/unusual-whales-api';
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { name: string } }
+  request: Request,
+  context: any,
 ) {
+  const { params } = context;
   try {
     const data = await unusualWhalesAPI.getInstitutionHoldings(params.name);
     return NextResponse.json(data);

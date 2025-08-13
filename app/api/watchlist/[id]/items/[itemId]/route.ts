@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { watchlists, saveWatchlists } from '../../../store';
 
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string; itemId: string } }
+  request: Request,
+  context: any,
 ) {
+  const { params } = context;
   try {
     const watchlist = watchlists.find(w => w.id === params.id);
     
