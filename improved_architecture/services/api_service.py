@@ -319,6 +319,24 @@ class UnusualWhalesAPIService:
     async def get_sector_performance(self, sector: str) -> APIResponse:
         """Get sector performance data."""
         return await self._make_request('GET', f'/api/market/{sector}/sector-tide')
+
+    async def get_hottest_chains(self, limit: int = 100) -> APIResponse:
+        """Get the hottest option chains."""
+        params = {'limit': limit}
+        return await self._make_request('GET', '/api/screener/option-contracts', params=params)
+
+    async def get_dark_pool_trades(self, date: Optional[str] = None, min_premium: Optional[int] = None, limit: int = 100) -> APIResponse:
+        """Get dark pool trades."""
+        params = {'limit': limit}
+        if date:
+            params['date'] = date
+        if min_premium:
+            params['min_premium'] = min_premium
+        return await self._make_request('GET', '/api/darkpool/recent', params=params)
+
+    async def get_option_contract_historic(self, contract_id: str) -> APIResponse:
+        """Get historic data for an option contract."""
+        return await self._make_request('GET', f'/api/option-contract/{contract_id}/historic')
     
     async def get_multiple_stock_data(self, tickers: List[str]) -> Dict[str, APIResponse]:
         """
