@@ -91,7 +91,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   return NextResponse.json({
+    success: false,
     status: 'disconnected',
-    message: 'Use POST to establish connection',
+    connected: false,
+    message: 'Not connected. Send POST with host/port/clientId to attempt connection.'
   });
 }

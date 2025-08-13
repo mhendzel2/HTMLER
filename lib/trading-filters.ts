@@ -519,6 +519,21 @@ export class TradingFilterSystem {
   }
 
   /**
+   * Stop monitoring GEX for a ticker (removes subscriptions and polling)
+   */
+  stopGEXMonitoring(ticker: string): void {
+    // Remove callback subscription
+    this.gexSubscriptions.delete(ticker);
+    // WebSocket client wrapper likely keeps internal map; attempt unsubscribe if available
+    try {
+      unusualWhalesWS.unsubscribe?.(`gex:${ticker}`);
+      unusualWhalesWS.unsubscribe?.(`gex_strike:${ticker}`);
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
+  /**
    * Start GEX polling for a ticker (fallback method)
    */
   private startGEXPolling(ticker: string): void {

@@ -85,7 +85,21 @@ export default function TradingOverviewPage() {
       try {
         const response = await fetch('/api/ibkr/connect', { method: 'GET' });
         if (response.ok) {
-          setOverview(prev => ({ ...prev, paperTradingStatus: 'connected' }));
+          // Only mark connected if API explicitly reports connected
+            try {
+              const json = await response.json();
+              const status = json.status || json.connectionStatus;
+              if (status === 'connected') {
+                setOverview(prev => ({ ...prev, paperTradingStatus: 'connected' }));
+              } else if (status === 'disconnected') {
+                setOverview(prev => ({ ...prev, paperTradingStatus: 'virtual' }));
+              }
+            } catch {
+              // If parsing fails, assume virtual
+              setOverview(prev => ({ ...prev, paperTradingStatus: 'virtual' }));
+            }
+        } else {
+          setOverview(prev => ({ ...prev, paperTradingStatus: 'virtual' }));
         }
       } catch {
         setOverview(prev => ({ ...prev, paperTradingStatus: 'virtual' }));
