@@ -1,5 +1,14 @@
 import { unusualWhalesAPI } from './unusual-whales-api';
 
+// State change event structure for observers
+export interface WebSocketStateEvent {
+  state: 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error' | 'failed';
+  attempt?: number;
+  code?: number;
+  reason?: string;
+  error?: string;
+}
+
 /**
  * WebSocket Connection Manager for Unusual Whales API
  * Handles real-time streaming data for GEX, flow alerts, and price updates
@@ -12,6 +21,10 @@ export class UnusualWhalesWebSocket {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000; // Start with 1 second
   private isConnecting = false;
+  private stateListeners: Set<(evt: WebSocketStateEvent) => void> = new Set();
+  private failureHandler?: () => void;
+  private failed = false;
+  private lastFailure: { attempt: number; code?: number; reason?: string; error?: string } | null = null;
 
   static getInstance(): UnusualWhalesWebSocket {
     if (!UnusualWhalesWebSocket.instance) {
@@ -80,6 +93,7 @@ export class UnusualWhalesWebSocket {
     }
 
     this.isConnecting = true;
+  this.notify({ state: 'connecting' });
 
     try {
       // Test access first
@@ -87,6 +101,9 @@ export class UnusualWhalesWebSocket {
       if (!accessTest.hasWebSocketScope) {
         console.warn('WebSocket access not available:', accessTest.error);
         this.isConnecting = false;
+        this.notify({ state: 'failed', error: accessTest.error });
+        this.markFailed({ attempt: this.reconnectAttempts, error: accessTest.error });
+        this.failureHandler?.();
         return false;
       }
 
@@ -103,8 +120,10 @@ export class UnusualWhalesWebSocket {
         this.ws!.onopen = () => {
           console.log('WebSocket connected successfully');
           this.reconnectAttempts = 0;
+            this.failed = false;
           this.reconnectDelay = 1000;
           this.isConnecting = false;
+          this.notify({ state: 'connected' });
           resolve(true);
         };
 
@@ -119,19 +138,22 @@ export class UnusualWhalesWebSocket {
         };
 
         this.ws!.onclose = (event) => {
-          console.log('WebSocket connection closed:', event.code, event.reason);
+          console.log('WebSocket connection closed:', event.code, event.reason || '(no reason)');
           this.ws = null;
           this.isConnecting = false;
-          
-          // Don't auto-reconnect if closed cleanly
-          if (event.code !== 1000) {
-            this.handleReconnect();
+          if (event.code === 1000) {
+            this.notify({ state: 'disconnected', code: event.code, reason: event.reason });
+          } else {
+            this.notify({ state: 'disconnected', code: event.code, reason: event.reason });
+            this.handleReconnect(event.code, event.reason);
           }
         };
 
-        this.ws!.onerror = (error) => {
+        this.ws!.onerror = (error: any) => {
+          const msg = (error && error.message) || 'Unknown error';
           console.error('WebSocket error:', error);
           this.isConnecting = false;
+          this.notify({ state: 'error', error: msg });
           resolve(false);
         };
 
@@ -148,8 +170,9 @@ export class UnusualWhalesWebSocket {
         }, 10000);
       });
     } catch (error) {
-      console.error('Failed to establish WebSocket connection:', error);
-      this.isConnecting = false;
+  console.error('Failed to establish WebSocket connection:', error);
+  this.isConnecting = false;
+  this.notify({ state: 'error', error: error instanceof Error ? error.message : 'Unknown failure' });
       return false;
     }
   }
@@ -237,21 +260,54 @@ export class UnusualWhalesWebSocket {
   /**
    * Handle reconnection logic
    */
-  private handleReconnect(): void {
+  private handleReconnect(code?: number, reason?: string): void {
+    if (this.failed) return; // Already failed definitively
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('Max reconnection attempts reached');
+      this.markFailed({ attempt: this.reconnectAttempts, code, reason });
+      this.notify({ state: 'failed', attempt: this.reconnectAttempts, code, reason });
+      this.failureHandler?.();
       return;
     }
-
     this.reconnectAttempts++;
+    this.notify({ state: 'reconnecting', attempt: this.reconnectAttempts, code, reason });
     console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-    
     setTimeout(() => {
       this.connect();
     }, this.reconnectDelay);
-    
-    // Exponential backoff
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+  }
+
+  private notify(evt: WebSocketStateEvent) {
+    this.stateListeners.forEach(l => {
+      try { l(evt); } catch (e) { console.error('WebSocket state listener error', e); }
+    });
+  }
+
+  private markFailed(info: { attempt: number; code?: number; reason?: string; error?: string }) {
+    this.failed = true;
+    this.lastFailure = info;
+  }
+
+  onStateChange(listener: (evt: WebSocketStateEvent) => void) {
+    this.stateListeners.add(listener);
+  }
+
+  offStateChange(listener: (evt: WebSocketStateEvent) => void) {
+    this.stateListeners.delete(listener);
+  }
+
+  setFailureHandler(handler: () => void) {
+    this.failureHandler = handler;
+  }
+
+  getConnectionInfo() {
+    return {
+      status: this.getStatus(),
+      reconnectAttempts: this.reconnectAttempts,
+      failed: this.failed,
+      lastFailure: this.lastFailure
+    };
   }
 
   /**
