@@ -23,6 +23,40 @@ export interface FilterCriteria {
   blockOnly?: boolean;
   aggressiveness?: 'sweep' | 'block' | 'split' | 'any';
 }
+export interface GEXData {
+  ticker: string;
+  totalGEX: number;
+  flipPoint: number;
+  callGEX: number;
+  putGEX: number;
+  strikeData: Array<{
+    strike: number;
+    callGEX: number;
+    putGEX: number;
+    netGEX: number;
+  }>;
+  timestamp: number;
+}
+
+// Debug structures for filter evaluation transparency
+interface FilterMatchDebug {
+  filterId: string;
+  passed: boolean;
+  reasons?: string[]; // present when failed
+}
+
+interface ProcessedAlertDebug {
+  at: number;
+  ticker: string;
+  premium: number;
+  dte: number;
+  size: number;
+  moneyness: string;
+  aggressiveness: string;
+  side: string;
+  type: string;
+  matches: FilterMatchDebug[];
+}
 
 export interface FlowAlert {
   ticker: string;
@@ -42,21 +76,6 @@ export interface FlowAlert {
   sentiment: 'bullish' | 'bearish' | 'neutral';
 }
 
-export interface GEXData {
-  ticker: string;
-  totalGEX: number;
-  flipPoint: number;
-  callGEX: number;
-  putGEX: number;
-  strikeData: Array<{
-    strike: number;
-    callGEX: number;
-    putGEX: number;
-    netGEX: number;
-  }>;
-  timestamp: number;
-}
-
 /**
  * Advanced Trading Filters System
  * Based on successful Unusual Whales trader strategies from social media research
@@ -66,6 +85,7 @@ export class TradingFilterSystem {
   private activeFilters: Map<string, BigMoneyFilter> = new Map();
   private alertSubscriptions: Map<string, (alert: FlowAlert) => void> = new Map();
   private gexSubscriptions: Map<string, (gex: GEXData) => void> = new Map();
+  private debugRecent: ProcessedAlertDebug[] = [];
 
   static getInstance(): TradingFilterSystem {
     if (!TradingFilterSystem.instance) {
@@ -445,36 +465,20 @@ export class TradingFilterSystem {
    * Check if flow alert matches filter criteria
    */
   private matchesFilter(alert: FlowAlert, criteria: FilterCriteria): boolean {
-    // Premium checks
-    if (criteria.minPremium && alert.premium < criteria.minPremium) return false;
-    if (criteria.maxPremium && alert.premium > criteria.maxPremium) return false;
-
-    // DTE checks
-    if (criteria.minDTE && alert.dte < criteria.minDTE) return false;
-    if (criteria.maxDTE && alert.dte > criteria.maxDTE) return false;
-
-    // Side check
-    if (criteria.side && criteria.side !== 'both' && alert.side !== criteria.side) return false;
-
-    // Moneyness check
-    if (criteria.moneyness && criteria.moneyness !== 'any' && alert.moneyness !== criteria.moneyness) return false;
-
-    // Contract type check
-    if (criteria.contractTypes && !criteria.contractTypes.includes(alert.type)) return false;
-
-    // Size check
-    if (criteria.minSize && alert.size < criteria.minSize) return false;
-
-    // Aggressiveness check
-    if (criteria.aggressiveness && criteria.aggressiveness !== 'any' && alert.aggressiveness !== criteria.aggressiveness) return false;
-
-    // Sweep only check
-    if (criteria.sweepOnly && alert.aggressiveness !== 'sweep') return false;
-
-    // Block only check
-    if (criteria.blockOnly && alert.aggressiveness !== 'block') return false;
-
-    return true;
+  // Consolidated logic (used internally + for debug reasons list)
+  const reasons: string[] = [];
+  if (criteria.minPremium && alert.premium < criteria.minPremium) reasons.push(`premium < minPremium (${alert.premium} < ${criteria.minPremium})`);
+  if (criteria.maxPremium && alert.premium > criteria.maxPremium) reasons.push(`premium > maxPremium (${alert.premium} > ${criteria.maxPremium})`);
+  if (criteria.minDTE && alert.dte < criteria.minDTE) reasons.push(`dte < minDTE (${alert.dte} < ${criteria.minDTE})`);
+  if (criteria.maxDTE && alert.dte > criteria.maxDTE) reasons.push(`dte > maxDTE (${alert.dte} > ${criteria.maxDTE})`);
+  if (criteria.side && criteria.side !== 'both' && alert.side !== criteria.side) reasons.push(`side mismatch (${alert.side} != ${criteria.side})`);
+  if (criteria.moneyness && criteria.moneyness !== 'any' && alert.moneyness !== criteria.moneyness) reasons.push(`moneyness mismatch (${alert.moneyness} != ${criteria.moneyness})`);
+  if (criteria.contractTypes && !criteria.contractTypes.includes(alert.type)) reasons.push(`type not in contractTypes (${alert.type})`);
+  if (criteria.minSize && alert.size < criteria.minSize) reasons.push(`size < minSize (${alert.size} < ${criteria.minSize})`);
+  if (criteria.aggressiveness && criteria.aggressiveness !== 'any' && alert.aggressiveness !== criteria.aggressiveness) reasons.push(`aggressiveness mismatch (${alert.aggressiveness} != ${criteria.aggressiveness})`);
+  if (criteria.sweepOnly && alert.aggressiveness !== 'sweep') reasons.push(`not sweep (agg=${alert.aggressiveness})`);
+  if (criteria.blockOnly && alert.aggressiveness !== 'block') reasons.push(`not block (agg=${alert.aggressiveness})`);
+  return reasons.length === 0;
   }
 
   /**
@@ -562,43 +566,40 @@ export class TradingFilterSystem {
    * Start GEX polling for a ticker (fallback method)
    */
   private startGEXPolling(ticker: string): void {
-    const pollGEX = async () => {
+    const interval = setInterval(async () => {
+      if (!this.gexSubscriptions.has(ticker)) {
+        clearInterval(interval);
+        return;
+      }
       try {
         let raw: any = null;
         if (typeof window === 'undefined') {
           try {
             const mod = await import('./unusual-whales-api');
-            raw = await (mod as any).unusualWhalesAPI.getStockGEX(ticker);
-          } catch {}
+            if ((mod as any).unusualWhalesAPI?.getGEX) {
+              raw = await (mod as any).unusualWhalesAPI.getGEX(ticker);
+            }
+          } catch (e) {
+            console.warn('Server GEX fetch failed, falling back to API route', e);
+          }
         }
         if (!raw) {
-          // Fallback: attempt internal API if implemented later
-          const resp = await fetch(`/api/gex?ticker=${ticker}`);
-          if (resp.ok) raw = await resp.json();
+          try {
+            const resp = await fetch(`/api/market/gex?ticker=${ticker}`);
+            if (resp.ok) raw = await resp.json();
+          } catch {}
         }
-        if (!raw) return;
-        const gexData = this.normalizeGEXData(ticker, raw);
-        const callback = this.gexSubscriptions.get(ticker);
-        if (callback) callback(gexData);
-      } catch (error) {
-        console.error(`Error fetching GEX for ${ticker}:`, error);
+        if (raw) {
+          const data = this.normalizeGEXData(ticker, raw.data || raw);
+          const cb = this.gexSubscriptions.get(ticker);
+          if (cb) cb(data);
+        }
+      } catch (err) {
+        console.error('GEX polling error', err);
       }
-    };
-    setInterval(pollGEX, 60000);
-    pollGEX();
+    }, 60000);
   }
 
-  /**
-   * Stop monitoring GEX for a ticker
-   */
-  stopGEXMonitoring(ticker: string): void {
-    this.gexSubscriptions.delete(ticker);
-    unusualWhalesWS.unsubscribe(`gex:${ticker}`);
-  }
-
-  /**
-   * Normalize flow alert data from WebSocket or API
-   */
   private normalizeFlowAlert(raw: any): FlowAlert {
     console.log('🔄 Normalizing flow alert from raw data:', JSON.stringify(raw, null, 2));
     
@@ -610,7 +611,7 @@ export class TradingFilterSystem {
     }
 
     // Extract option details from contract ID
-    const contractId = alertData.option_chain || alertData.contract_id || alertData.contractId;
+  const contractId = alertData.option_chain || alertData.contract_id || alertData.contractId || alertData.option_symbol;
     let ticker = alertData.ticker;
     let strike = alertData.strike;
     let expiry = alertData.expiry;
@@ -639,7 +640,7 @@ export class TradingFilterSystem {
 
     const underlyingPrice = alertData.underlying_price || alertData.underlyingPrice || alertData.price || 0;
     const premium = alertData.total_premium || alertData.premium || 0;
-    const size = alertData.total_size || alertData.size || 0;
+  const size = alertData.total_size || alertData.size || alertData.volume || 0;
     const price = alertData.price || 0;
 
     const side = this.determineSide(alertData);
@@ -647,6 +648,24 @@ export class TradingFilterSystem {
     const moneyness = this.calculateMoneyness({ strike, underlying_price: underlyingPrice, type });
     const aggressiveness = this.determineAggressiveness(alertData);
     const sentiment = this.calculateSentiment({ type, side });
+
+    // Attempt parse from option_symbol if still missing expiry or strike
+    if ((!expiry || !strike) && alertData.option_symbol) {
+      const sym = String(alertData.option_symbol);
+      // Common OCC format underlying + YYMMDD + C/P + strike * 1000 maybe
+      const m2 = sym.match(/^[A-Z]+(\d{6})([CP])(\d{2,8})/);
+      if (m2) {
+        const dateStr = m2[1];
+        const year = 2000 + parseInt(dateStr.substring(0,2));
+        const month = parseInt(dateStr.substring(2,4));
+        const day = parseInt(dateStr.substring(4,6));
+        if (!expiry) expiry = `${year}-${month.toString().padStart(2,'0')}-${day.toString().padStart(2,'0')}`;
+        if (!strike) {
+          const rawStrike = parseInt(m2[3]);
+            if (!isNaN(rawStrike)) strike = rawStrike / 1000; // heuristic
+        }
+      }
+    }
 
     const normalizedAlert = {
       ticker: ticker || 'UNKNOWN',
@@ -782,6 +801,9 @@ export class TradingFilterSystem {
     // This is a placeholder for the statistical tracking system
     return {};
   }
+
+  getDebugRecent(): ProcessedAlertDebug[] { return this.debugRecent.slice().reverse(); }
+  getFilters(): any[] { return this.getAvailableFilters().map(f => ({ id: f.id, enabled: f.enabled, criteria: f.criteria })); }
 }
 
 export const tradingFilters = TradingFilterSystem.getInstance();
