@@ -1,9 +1,10 @@
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { unusualWhalesAPI } from '@/lib/unusual-whales-api';
 
-export async function GET(request: NextRequest, { params }: { params: { ticker: string } }) {
+export async function GET(request: Request, context: any) {
+  const { params } = context;
   try {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'state';

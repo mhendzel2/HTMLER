@@ -394,21 +394,7 @@ export class UnusualWhalesAPI {
     if (endDate) params.end_date = endDate;
     if (ticker) params.ticker = ticker;
     if (congressMember) params.congress_member = congressMember;
-    try {
-      return await this.makeRequest('/congress/recent-trades', { params });
-    } catch (err) {
-      console.error('Congress recent trades API failed, attempting Discord fallback:', err);
-      try {
-        if (process.env.DISCORD_BOT_TOKEN) {
-          const mod = await import('./discord-client');
-          const fallback = await mod.fetchCongressTradesFromDiscord(limit, ticker, congressMember);
-          return { data: { data: fallback, source: 'discord' } } as any;
-        }
-      } catch (inner) {
-        console.error('Discord fallback failed:', inner);
-      }
-      throw err; // propagate original error if fallback unavailable
-    }
+    return this.makeRequest('/congress/recent-trades', { params });
   }
 
   async getCongressTopTradedTickers(
@@ -419,21 +405,7 @@ export class UnusualWhalesAPI {
     const params: Record<string, string | number> = { limit };
     if (startDate) params.start_date = startDate;
     if (endDate) params.end_date = endDate;
-    try {
-      return await this.makeRequest('/congress/top-traded-tickers', { params });
-    } catch (err) {
-      console.error('Congress top traded tickers API failed, attempting Discord fallback:', err);
-      try {
-        if (process.env.DISCORD_BOT_TOKEN) {
-          const mod = await import('./discord-client');
-          const fallback = await mod.fetchTopTradedTickersFromDiscord(limit);
-          return { data: { data: fallback, source: 'discord' } } as any;
-        }
-      } catch (inner) {
-        console.error('Discord fallback failed:', inner);
-      }
-      throw err;
-    }
+    return this.makeRequest('/congress/top-traded-tickers', { params });
   }
 
   // Alerts Endpoints
@@ -467,23 +439,7 @@ export class UnusualWhalesAPI {
       params.ticker_symbols = tickerSymbols;
     }
 
-    try {
-      return await this.makeRequest('/alerts', { params });
-    } catch (err) {
-      console.error('Alerts API failed, attempting Discord fallback:', err);
-      try {
-        if (process.env.DISCORD_BOT_TOKEN) {
-          const symbols = (tickerSymbols || '').split(',').map(s => s.trim()).filter(Boolean);
-          if (!symbols.length) return { data: { data: [], source: 'discord', note: 'No symbols provided for fallback' } } as any;
-          const mod = await import('./discord-client');
-          const fallback = await mod.fetchFlowAlertsFromDiscord(symbols, limit);
-          return { data: { data: fallback, source: 'discord' } } as any;
-        }
-      } catch (inner) {
-        console.error('Discord fallback failed:', inner);
-      }
-      throw err;
-    }
+    return this.makeRequest('/alerts', { params });
   }
 
   async getAlertConfigurations() {

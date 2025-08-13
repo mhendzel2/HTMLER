@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { watchlists, WatchlistItem, saveWatchlists } from '../store';
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: any,
 ) {
+  const { params } = context;
   try {
     const watchlist = watchlists.find(w => w.id === params.id);
 
@@ -28,9 +29,10 @@ export async function GET(
 }
 
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: any,
 ) {
+  const { params } = context;
   try {
     const index = watchlists.findIndex(w => w.id === params.id);
     
@@ -55,9 +57,10 @@ export async function DELETE(
 }
 
 export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: any,
 ) {
+  const { params } = context;
   try {
     const body = await request.json();
     const { ticker } = body;

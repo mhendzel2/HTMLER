@@ -1,12 +1,16 @@
 import { unusualWhalesAPI } from './unusual-whales-api';
 import { unusualWhalesWS } from './websocket-client';
 
+const CUSTOM_FILTERS_STORAGE_KEY = 'unusual_whales_custom_filters';
+
 export interface BigMoneyFilter {
   id: string;
   name: string;
   description: string;
   criteria: FilterCriteria;
   enabled: boolean;
+  isPreset?: boolean;
+  isCustom?: boolean;
 }
 
 export interface FilterCriteria {
@@ -75,6 +79,7 @@ export class TradingFilterSystem {
 
   constructor() {
     this.initializePresetFilters();
+    this.loadCustomFilters();
   }
 
   /**
@@ -87,6 +92,7 @@ export class TradingFilterSystem {
       name: 'Big Money OTM Whales',
       description: 'Tracks $500K+ premium OTM options targeting institutional plays',
       enabled: true,
+      isPreset: true,
       criteria: {
         minPremium: 500000, // $500K minimum
         side: 'ask', // Ask-side only (aggressive buying)
@@ -103,6 +109,7 @@ export class TradingFilterSystem {
       name: 'Aggressive Short-Term Plays',
       description: '0-14 DTE high-premium sweeps indicating immediate catalysts',
       enabled: true,
+      isPreset: true,
       criteria: {
         minPremium: 100000, // $100K minimum for short-term
         maxDTE: 14, // 2 weeks or less
@@ -118,6 +125,7 @@ export class TradingFilterSystem {
       name: 'Dark Pool Correlation',
       description: 'Large blocks that may correlate with dark pool activity',
       enabled: true,
+      isPreset: true,
       criteria: {
         minPremium: 250000, // $250K threshold
         aggressiveness: 'block', // Block trades
@@ -133,6 +141,7 @@ export class TradingFilterSystem {
       name: 'Gamma Squeeze Setup',
       description: 'Identifies potential gamma squeeze scenarios',
       enabled: true,
+      isPreset: true,
       criteria: {
         contractTypes: ['call'], // Calls only
         side: 'ask',
@@ -148,6 +157,7 @@ export class TradingFilterSystem {
       name: 'Unusual Put Volume',
       description: 'Large put activity indicating hedging or bearish bets',
       enabled: false, // Disabled by default
+      isPreset: true,
       criteria: {
         contractTypes: ['put'],
         minPremium: 200000, // $200K minimum
@@ -162,6 +172,7 @@ export class TradingFilterSystem {
       name: 'Earnings Plays',
       description: 'Options activity likely tied to earnings events',
       enabled: true,
+      isPreset: true,
       criteria: {
         maxDTE: 45, // Within earnings season timeframe
         minPremium: 75000, // $75K minimum
@@ -174,11 +185,8 @@ export class TradingFilterSystem {
    * Start real-time monitoring with WebSocket
    */
   async startRealTimeMonitoring(): Promise<boolean> {
-    console.log('🚀 Starting real-time monitoring...');
-    
     // Test WebSocket access
     const wsTest = await unusualWhalesWS.testWebSocketAccess();
-    console.log('🔍 WebSocket access test:', wsTest);
     
     if (!wsTest.hasWebSocketScope) {
       console.warn('⚠️ WebSocket not available, falling back to polling');
@@ -187,9 +195,7 @@ export class TradingFilterSystem {
     }
 
     // Connect to WebSocket
-    console.log('🔌 Connecting to WebSocket...');
     const connected = await unusualWhalesWS.connect();
-    console.log('🔌 WebSocket connection result:', connected);
     
     if (!connected) {
       console.warn('⚠️ WebSocket connection failed, falling back to polling');
@@ -197,43 +203,34 @@ export class TradingFilterSystem {
       return false;
     }
 
-    console.log('✅ WebSocket connected successfully - subscribing to channels...');
-
     // Subscribe to flow alerts - this replaces multiple inefficient API calls
     unusualWhalesWS.subscribe('flow-alerts', (data) => {
-      console.log('🚨 RAW WebSocket flow alert received:', JSON.stringify(data, null, 2));
-      
       // Handle WebSocket client wrapper format: { channel, payload, timestamp }
       if (data.channel === 'flow-alerts' && data.payload) {
-        console.log('📨 Processing WebSocket client wrapper format flow alert');
         this.processFlowAlert(this.normalizeFlowAlert(data.payload));
       }
       // Handle WebSocket array format: ["flow-alerts", {...}]
       else if (Array.isArray(data) && data.length === 2 && data[0] === 'flow-alerts') {
-        console.log('📨 Processing WebSocket array format flow alert');
         this.processFlowAlert(this.normalizeFlowAlert(data[1]));
       } 
       // Handle object format with payload
       else if (data.payload) {
-        console.log('📨 Processing WebSocket payload format flow alert');
         this.processFlowAlert(this.normalizeFlowAlert(data.payload));
       }
       // Handle direct flow alert data
       else {
-        console.log('📨 Processing WebSocket direct format flow alert');
         this.processFlowAlert(this.normalizeFlowAlert(data));
       }
     });
 
     // Subscribe to news for additional context
     unusualWhalesWS.subscribe('news', (data) => {
-      console.log('Received news data:', data);
       if (Array.isArray(data) && data.length === 2 && data[0] === 'news') {
         this.processNewsAlert(data[1]);
       }
     });
 
-    console.log('Real-time monitoring started with WebSocket');
+    console.log('Real-time monitoring started.');
     return true;
   }
 
@@ -258,7 +255,7 @@ export class TradingFilterSystem {
           await new Promise(res => setTimeout(res, 0));
         }
       }
-      console.log(`📚 Historical alerts loaded: ${processed}`);
+      console.log(`Loaded ${processed} historical alerts.`);
       return processed;
     } catch (e) {
       console.error('Failed loading historical alerts', e);
@@ -270,7 +267,7 @@ export class TradingFilterSystem {
    * Fallback polling mode when WebSocket is not available
    */
   private startPollingMode(): void {
-    console.log('Starting polling mode for flow alerts');
+    console.log('Starting polling mode for flow alerts.');
     
     // Poll every 30 seconds to respect rate limits
     setInterval(async () => {
@@ -304,109 +301,28 @@ export class TradingFilterSystem {
    * Process incoming flow alert against all active filters
    */
   private processFlowAlert(alert: FlowAlert): void {
-    console.log('🔍 Processing flow alert:', {
-      ticker: alert.ticker,
-      premium: alert.premium,
-      side: alert.side,
-      type: alert.type,
-      dte: alert.dte,
-      moneyness: alert.moneyness,
-      aggressiveness: alert.aggressiveness,
-      sentiment: alert.sentiment
-    });
-    
-    let matched = 0;
-    
     for (const [filterId, filter] of this.activeFilters) {
       if (!filter.enabled) {
-        console.log(`❌ Filter ${filter.name} is disabled`);
         continue;
       }
 
-      console.log(`🎯 Testing against filter: ${filter.name}`, {
-        criteria: filter.criteria,
-        alert: {
-          premium: alert.premium,
-          dte: alert.dte,
-          side: alert.side,
-          moneyness: alert.moneyness,
-          type: alert.type,
-          size: alert.size,
-          aggressiveness: alert.aggressiveness
-        }
-      });
-
       if (this.matchesFilter(alert, filter.criteria)) {
-        matched++;
-        console.log(`✅ Alert matches filter: ${filter.name}`, alert);
-        
         // Alert matches filter criteria - notify subscribers
         const callback = this.alertSubscriptions.get(filterId);
         if (callback) {
           callback(alert);
         }
-      } else {
-        console.log(`❌ Alert does NOT match filter: ${filter.name}`);
-        this.debugFilterMatch(alert, filter.criteria);
       }
     }
-    
-    console.log(`📊 Alert processed - ${matched} filters matched out of ${this.activeFilters.size} active filters`);
-  }
-
-  /**
-   * Debug why an alert didn't match a filter
-   */
-  private debugFilterMatch(alert: FlowAlert, criteria: FilterCriteria): void {
-    const failures = [];
-    
-    if (criteria.minPremium && alert.premium < criteria.minPremium) {
-      failures.push(`premium ${alert.premium} < ${criteria.minPremium}`);
-    }
-    if (criteria.maxPremium && alert.premium > criteria.maxPremium) {
-      failures.push(`premium ${alert.premium} > ${criteria.maxPremium}`);
-    }
-    if (criteria.minDTE && alert.dte < criteria.minDTE) {
-      failures.push(`DTE ${alert.dte} < ${criteria.minDTE}`);
-    }
-    if (criteria.maxDTE && alert.dte > criteria.maxDTE) {
-      failures.push(`DTE ${alert.dte} > ${criteria.maxDTE}`);
-    }
-    if (criteria.side && criteria.side !== 'both' && alert.side !== criteria.side) {
-      failures.push(`side ${alert.side} != ${criteria.side}`);
-    }
-    if (criteria.moneyness && criteria.moneyness !== 'any' && alert.moneyness !== criteria.moneyness) {
-      failures.push(`moneyness ${alert.moneyness} != ${criteria.moneyness}`);
-    }
-    if (criteria.contractTypes && !criteria.contractTypes.includes(alert.type)) {
-      failures.push(`type ${alert.type} not in ${criteria.contractTypes}`);
-    }
-    if (criteria.minSize && alert.size < criteria.minSize) {
-      failures.push(`size ${alert.size} < ${criteria.minSize}`);
-    }
-    if (criteria.aggressiveness && criteria.aggressiveness !== 'any' && alert.aggressiveness !== criteria.aggressiveness) {
-      failures.push(`aggressiveness ${alert.aggressiveness} != ${criteria.aggressiveness}`);
-    }
-    if (criteria.sweepOnly && alert.aggressiveness !== 'sweep') {
-      failures.push(`not a sweep (${alert.aggressiveness})`);
-    }
-    if (criteria.blockOnly && alert.aggressiveness !== 'block') {
-      failures.push(`not a block (${alert.aggressiveness})`);
-    }
-    
-    console.log(`🚫 Filter match failures:`, failures);
   }
 
   /**
    * Process incoming news alert for context
    */
   private processNewsAlert(news: any): void {
-    console.log('Processing news alert:', news.headline);
-    
     // Store recent news for context in trading decisions
     if (news.tickers && news.tickers.length > 0) {
       // News affects specific tickers - could influence flow analysis
-      console.log('News affects tickers:', news.tickers);
     }
   }
 
@@ -484,6 +400,55 @@ export class TradingFilterSystem {
     const filter = this.activeFilters.get(filterId);
     if (filter) {
       filter.criteria = { ...filter.criteria, ...criteria };
+      if (filter.isCustom) {
+        this.saveCustomFilters();
+      }
+    }
+  }
+
+  addCustomFilter(filterData: Omit<BigMoneyFilter, 'id' | 'isCustom' | 'isPreset'>): BigMoneyFilter {
+    const id = `custom-${Date.now()}`;
+    const newFilter: BigMoneyFilter = {
+      ...filterData,
+      id,
+      isCustom: true,
+      enabled: true,
+    };
+    this.activeFilters.set(id, newFilter);
+    this.saveCustomFilters();
+    return newFilter;
+  }
+
+  deleteCustomFilter(filterId: string): void {
+    const filter = this.activeFilters.get(filterId);
+    if (filter && filter.isCustom) {
+      this.activeFilters.delete(filterId);
+      this.saveCustomFilters();
+    }
+  }
+
+  private loadCustomFilters(): void {
+    try {
+      if (typeof window === 'undefined') return;
+      const storedFilters = localStorage.getItem(CUSTOM_FILTERS_STORAGE_KEY);
+      if (storedFilters) {
+        const customFilters: BigMoneyFilter[] = JSON.parse(storedFilters);
+        customFilters.forEach(filter => {
+          this.activeFilters.set(filter.id, { ...filter, isCustom: true });
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load custom filters from localStorage", error);
+    }
+  }
+
+  private saveCustomFilters(): void {
+    try {
+      if (typeof window === 'undefined') return;
+      const customFilters = Array.from(this.activeFilters.values()).filter(f => f.isCustom);
+      localStorage.setItem(CUSTOM_FILTERS_STORAGE_KEY, JSON.stringify(customFilters));
+    } catch (error) {
+      console.error("Failed to save custom filters to localStorage", error);
     }
   }
 
@@ -491,18 +456,12 @@ export class TradingFilterSystem {
    * Monitor GEX for a specific ticker using WebSocket (much more efficient)
    */
   async monitorGEX(ticker: string, callback: (gex: GEXData) => void): Promise<void> {
-    console.log(`Starting GEX monitoring for ${ticker}`);
-    
     // Try WebSocket first for real-time data
     const wsStatus = unusualWhalesWS.getStatus();
     
     if (wsStatus === 'connected') {
-      console.log(`Using WebSocket for real-time GEX data on ${ticker}`);
-      
       // Subscribe to real-time GEX updates
       unusualWhalesWS.subscribe(`gex:${ticker}`, (data) => {
-        console.log(`Received GEX data for ${ticker}:`, data);
-        
         if (Array.isArray(data) && data.length === 2 && data[0] === `gex:${ticker}`) {
           const gexData = this.normalizeGEXData(ticker, data[1]);
           callback(gexData);
@@ -511,16 +470,13 @@ export class TradingFilterSystem {
       
       // Also subscribe to strike-level GEX for detailed analysis
       unusualWhalesWS.subscribe(`gex_strike:${ticker}`, (data) => {
-        console.log(`Received strike GEX data for ${ticker}:`, data);
-        
         if (Array.isArray(data) && data.length === 2 && data[0] === `gex_strike:${ticker}`) {
           // This provides strike-level gamma data - very valuable for squeeze detection
-          console.log('Strike-level GEX update:', data[1]);
         }
       });
       
     } else {
-      console.log(`WebSocket not connected for ${ticker}, falling back to periodic fetching`);
+      console.warn(`WebSocket not connected for ${ticker}, falling back to periodic fetching for GEX.`);
       // Fallback to periodic fetching
       this.gexSubscriptions.set(ticker, callback);
       this.startGEXPolling(ticker);
@@ -564,13 +520,10 @@ export class TradingFilterSystem {
    * Normalize flow alert data from WebSocket or API
    */
   private normalizeFlowAlert(raw: any): FlowAlert {
-    console.log('🔄 Normalizing flow alert from raw data:', JSON.stringify(raw, null, 2));
-    
     // Handle WebSocket format: ["flow-alerts", {...}]
     let alertData = raw;
     if (Array.isArray(raw) && raw.length === 2 && raw[0] === 'flow-alerts') {
       alertData = raw[1];
-      console.log('🔄 Extracted from array format:', alertData);
     }
 
     // Extract option details from contract ID
@@ -579,8 +532,6 @@ export class TradingFilterSystem {
     let strike = alertData.strike;
     let expiry = alertData.expiry;
     let type: 'call' | 'put' = alertData.type || 'call';
-
-    console.log('🔄 Initial extraction:', { contractId, ticker, strike, expiry, type });
 
     // Parse contract ID if available (format: TICKER241018C00415000)
     if (contractId && !ticker) {
@@ -596,8 +547,6 @@ export class TradingFilterSystem {
         const month = parseInt(dateStr.substring(2, 4));
         const day = parseInt(dateStr.substring(4, 6));
         expiry = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-        
-        console.log('🔄 Parsed from contract ID:', { ticker, type, strike, expiry });
       }
     }
 
@@ -630,7 +579,6 @@ export class TradingFilterSystem {
       sentiment
     };
 
-    console.log('✅ Normalized flow alert:', normalizedAlert);
     return normalizedAlert;
   }
 
